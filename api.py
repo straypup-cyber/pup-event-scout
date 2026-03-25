@@ -526,5 +526,14 @@ def get_pricing():
     return jsonify(PRICING)
 
 
+
+@app.route("/api/maps-embed")
+def maps_embed():
+    q = request.args.get("q", "")
+    if not q or not GOOGLE_PLACES_API_KEY:
+        return jsonify({"url": ""}), 400
+    url = f"https://www.google.com/maps/embed/v1/search?key={GOOGLE_PLACES_API_KEY}&q={requests.utils.quote(q)}"
+    return jsonify({"url": url})
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5001, debug=False)
