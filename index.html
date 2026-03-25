@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pup Event Scout — AI Venue Finder</title>
+  <meta name="description" content="AI-powered venue finder for events. Find the perfect space in seconds, powered by OpenClaw + Anthropic.">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1e1e2e;
+      --border: #2a2a3d;
+      --accent: #7c5cfc;
+      --accent2: #5c8afc;
+      --text: #e2e2f0;
+      --text-muted: #8888aa;
+      --success: #22c55e;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* Background decoration */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -40%;
+      left: -20%;
+      width: 80%;
+      height: 80%;
+      background: radial-gradient(ellipse, rgba(124,92,252,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -30%;
+      right: -10%;
+      width: 60%;
+      height: 60%;
+      background: radial-gradient(ellipse, rgba(92,138,252,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* NAV */
+    nav {
+      padding: 20px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-paw { font-size: 1.5rem; }
+
+    .nav-badge {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      padding: 70px 0 50px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(124,92,252,0.12);
+      border: 1px solid rgba(124,92,252,0.3);
+      color: #a78bfa;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #7c5cfc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 520px;
+      margin: 0 auto 36px;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 24px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white;
+      box-shadow: 0 4px 20px rgba(124,92,252,0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(124,92,252,0.4);
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--surface);
+      border-color: rgba(124,92,252,0.5);
+      transform: translateY(-2px);
+    }
+
+    /* DEMO CARD */
+    .demo-section {
+      padding: 20px 0 60px;
+    }
+
+    .demo-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .demo-header {
+      background: var(--surface2);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .demo-header-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #ff5f57; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #28c840; }
+
+    .demo-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .search-form {
+      padding: 28px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .form-group input,
+    .form-group select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      transition: border-color 0.2s;
+      outline: none;
+      width: 100%;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: var(--accent);
+    }
+
+    .form-group input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .form-group select option {
+      background: var(--surface2);
+    }
+
+    .form-full { grid-column: 1 / -1; }
+
+    .search-btn {
+      width: 100%;
+      justify-content: center;
+      padding: 14px;
+      font-size: 1rem;
+      border-radius: 10px;
+      margin-top: 4px;
+    }
+
+    /* RESULTS */
+    .results-area {
+      padding: 0 28px 28px;
+      display: none;
+    }
+
+    .results-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .results-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .venue-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+
+    .venue-card:hover { border-color: rgba(124,92,252,0.4); }
+
+    .venue-name {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+
+    .venue-meta {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin: 8px 0;
+    }
+
+    .venue-tag {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .venue-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    .venue-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: #a78bfa;
+      text-decoration: none;
+    }
+
+    .venue-link:hover { text-decoration: underline; }
+
+    .loading {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .loading-dots::after {
+      content: '...';
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40%, 60% { content: '..'; }
+      80%, 100% { content: '...'; }
+    }
+
+    /* HOW IT WORKS */
+    .section {
+      padding: 60px 0;
+    }
+
+    .section-label {
+      font-size: 0.78rem;
+      color: var(--accent);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+
+    .section h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 40px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+
+    .step-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+    }
+
+    .step h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .step p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* POWERED BY */
+    .powered-by {
+      padding: 50px 0;
+      text-align: center;
+    }
+
+    .powered-by p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+    }
+
+    .tech-badges {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .tech-badge {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    /* Telegram button icon */
+    .tg-icon::before { content: '✈'; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <nav>
+    <div class="logo">
+      <span class="logo-paw">🐾</span>
+      <span>Pup Event Scout</span>
+    </div>
+    <span class="nav-badge">Hackathon 2025</span>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-badge">
+      🏆 OpenClaw Lobster Cave Cannes · Event Scout Track
+    </div>
+    <h1>Find the <span class="gradient-text">perfect venue</span><br>in seconds</h1>
+    <p>Describe your event in plain English. Our AI sniffs out the best venues tailored to your city, crowd, budget, and vibe.</p>
+    <div class="hero-cta">
+      <a href="https://t.me/pupeventscout_bot" class="btn btn-primary" target="_blank">
+        ✈ Try on Telegram
+      </a>
+      <a href="#search" class="btn btn-secondary">
+        🔍 Search Here
+      </a>
+    </div>
+  </section>
+
+  <!-- DEMO SEARCH -->
+  <section class="demo-section" id="search">
+    <div class="demo-card">
+      <div class="demo-header">
+        <div class="demo-header-dots">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+        </div>
+        <span class="demo-title">🐾 Pup Event Scout — Venue Finder</span>
+      </div>
+
+      <div class="search-form">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>📍 City / Location</label>
+            <input type="text" id="city" placeholder="Cannes, Paris, Nice..." />
+          </div>
+          <div class="form-group">
+            <label>👥 Capacity</label>
+            <input type="text" id="capacity" placeholder="50 people" />
+          </div>
+          <div class="form-group">
+            <label>💰 Budget</label>
+            <input type="text" id="budget" placeholder="$5,000" />
+          </div>
+          <div class="form-group">
+            <label>🎨 Vibe / Theme</label>
+            <select id="vibe">
+              <option value="">Select a vibe...</option>
+              <option value="rooftop">🌇 Rooftop</option>
+              <option value="beachfront">🏖 Beachfront</option>
+              <option value="luxury">✨ Luxury / Elegant</option>
+              <option value="creative">🎨 Creative / Artistic</option>
+              <option value="corporate">💼 Corporate / Professional</option>
+              <option value="industrial">🏭 Industrial / Warehouse</option>
+              <option value="garden">🌿 Garden / Outdoor</option>
+              <option value="intimate">🕯 Intimate / Cozy</option>
+              <option value="nightlife">🎵 Nightlife / Party</option>
+              <option value="historic">🏛 Historic / Classic</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary search-btn" onclick="searchVenues()">
+          🐾 Find Venues
+        </button>
+      </div>
+
+      <div class="results-area" id="results">
+        <hr class="results-divider">
+        <div class="results-label">Venue Recommendations</div>
+        <div id="results-content"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section">
+    <div class="section-label">How it works</div>
+    <h2>From request to shortlist<br>in under 10 seconds</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Describe your event</h3>
+        <p>Tell us the city, how many people, your budget, and the kind of vibe you're going for.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>AI parses your needs</h3>
+        <p>Claude AI extracts key requirements and generates targeted search queries to find matching venues.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Real venue search</h3>
+        <p>We search the web in real-time to find actual venues that exist and match your criteria.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Get your shortlist</h3>
+        <p>Receive 3–5 curated venues with names, addresses, capacity, vibe match, and website links.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- POWERED BY -->
+  <div class="powered-by">
+    <p>Built with</p>
+    <div class="tech-badges">
+      <div class="tech-badge">🤖 Anthropic Claude</div>
+      <div class="tech-badge">🦞 OpenClaw</div>
+      <div class="tech-badge">🔍 DuckDuckGo Search</div>
+      <div class="tech-badge">✈ Telegram Bot API</div>
+      <div class="tech-badge">🐍 Python</div>
+    </div>
+  </div>
+
+  <!-- CTA BOTTOM -->
+  <section style="text-align:center; padding: 40px 0 70px;">
+    <h2 style="font-size:1.8rem; margin-bottom:12px; letter-spacing:-0.03em;">Ready to find your venue?</h2>
+    <p style="color:var(--text-muted); margin-bottom:28px;">Chat with Pup Event Scout on Telegram — it's free and instant.</p>
+    <a href="https://t.me/pupeventscout_bot" class="btn btn-primary" target="_blank" style="font-size:1.05rem; padding:15px 32px;">
+      ✈ Open in Telegram
+    </a>
+  </section>
+
+  <footer>
+    <p>🐾 Pup Event Scout · Built for <a href="#">OpenClaw Lobster Cave Cannes Hackathon 2025</a> · Event Scout Track</p>
+    <p style="margin-top:6px;">Powered by <a href="https://anthropic.com" target="_blank">Anthropic</a> + <a href="https://openclaw.ai" target="_blank">OpenClaw</a></p>
+  </footer>
+</div>
+
+<script>
+  // Example demo venues for the web UI
+  const demoVenues = {
+    default: [
+      {
+        name: "Rooftop Bar & Terrace — Hôtel Majestic Barrière",
+        address: "10 La Croisette, Cannes, France",
+        capacity: "30–80 guests",
+        vibe: "Luxury rooftop · Stunning sea views",
+        why: "Iconic Cannes landmark with panoramic Mediterranean views. Perfect for upscale receptions and corporate events during the Film Festival.",
+        url: "https://www.majestic-barriere.com"
+      },
+      {
+        name: "Villa Domergue",
+        address: "15 Avenue Fiesole, Cannes, France",
+        capacity: "Up to 200 guests",
+        vibe: "Historic · Garden · Art-deco elegance",
+        why: "Stunning 1930s art deco villa with terraced gardens overlooking the bay. Unique heritage venue that wows guests from the first step.",
+        url: "https://www.cannes.com"
+      },
+      {
+        name: "Le Palais des Festivals — Terrasse de la Côte",
+        address: "1 Boulevard de la Croisette, Cannes, France",
+        capacity: "50–300 guests",
+        vibe: "Prestigious · Iconic · Sea-facing terrace",
+        why: "The iconic home of the Cannes Film Festival. Hosting your event here carries enormous cachet. Flexible spaces for cocktails to conferences.",
+        url: "https://www.palaisdesfestivals.com"
+      }
+    ]
+  };
+
+  function createVenueCard(venue) {
+    return `
+      <div class="venue-card">
+        <div class="venue-name">🏛 ${venue.name}</div>
+        <div class="venue-meta">
+          <span class="venue-tag">📍 ${venue.address}</span>
+          <span class="venue-tag">👥 ${venue.capacity}</span>
+          <span class="venue-tag">✨ ${venue.vibe}</span>
+        </div>
+        <div class="venue-desc">💡 ${venue.why}</div>
+        ${venue.url ? `<a href="${venue.url}" class="venue-link" target="_blank">🔗 Visit website →</a>` : ''}
+      </div>
+    `;
+  }
+
+  function searchVenues() {
+    const city = document.getElementById('city').value.trim();
+    const capacity = document.getElementById('capacity').value.trim();
+    const budget = document.getElementById('budget').value.trim();
+    const vibe = document.getElementById('vibe').value;
+
+    if (!city) {
+      alert('Please enter a city or location!');
+      return;
+    }
+
+    const resultsArea = document.getElementById('results');
+    const resultsContent = document.getElementById('results-content');
+    resultsArea.style.display = 'block';
+
+    // Show loading
+    resultsContent.innerHTML = `
+      <div class="loading">
+        🐾 Sniffing out venues in ${city}<span class="loading-dots"></span>
+      </div>
+    `;
+
+    // Simulate AI search (in production this would call the actual API)
+    setTimeout(() => {
+      // Build a query string for Telegram
+      const parts = [];
+      if (city) parts.push(`venue in ${city}`);
+      if (capacity) parts.push(`for ${capacity}`);
+      if (budget) parts.push(`budget ${budget}`);
+      if (vibe) parts.push(`${vibe} vibe`);
+      const query = parts.join(', ');
+
+      resultsContent.innerHTML = `
+        <div class="venue-card" style="background: rgba(124,92,252,0.08); border-color: rgba(124,92,252,0.3); text-align:center; padding: 24px;">
+          <div style="font-size:1.5rem; margin-bottom:10px;">🐾</div>
+          <div style="font-weight:600; margin-bottom:8px;">Get real AI-powered results on Telegram!</div>
+          <div style="color:var(--text-muted); font-size:0.88rem; margin-bottom:16px;">
+            The web demo shows examples. For live venue search powered by Claude AI + DuckDuckGo, chat with the bot:
+          </div>
+          <div style="font-style:italic; color:#a78bfa; margin-bottom:18px; font-size:0.9rem;">"${query}"</div>
+          <a href="https://t.me/pupeventscout_bot?start=search" class="btn btn-primary" target="_blank" style="margin: 0 auto;">
+            ✈ Find Venues on Telegram
+          </a>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="results-label">Example results for Cannes</div>
+          ${demoVenues.default.map(createVenueCard).join('')}
+        </div>
+      `;
+
+      resultsArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 1800);
+  }
+
+  // Allow enter key in form
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && document.activeElement.closest('.search-form')) {
+      searchVenues();
+    }
+  });
+</script>
+
+</body>
+</html>
