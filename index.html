@@ -233,21 +233,37 @@
 
     @media (max-width: 900px) {
       .steps { grid-template-columns: repeat(2, 1fr); }
+      h1 { font-size: 2.2rem; }
     }
     @media (max-width: 600px) {
       .form-grid { grid-template-columns: 1fr; }
-      .steps { grid-template-columns: 1fr 1fr; gap: 12px; }
-      .step { padding: 16px; }
-      .step-num { width: 32px; height: 32px; font-size: 0.9rem; margin-bottom: 10px; }
-      .step h3 { font-size: 0.9rem; margin-bottom: 6px; }
-      .step p { font-size: 0.8rem; }
-      h1 { font-size: 2rem; }
-      .hero { padding: 40px 0 30px; }
-      .hero p { font-size: 1rem; }
+      .steps {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .step {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 14px 16px;
+      }
+      .step-num {
+        width: 30px;
+        height: 30px;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+        margin-bottom: 0;
+      }
+      .step h3 { font-size: 0.9rem; margin-bottom: 3px; }
+      .step p { font-size: 0.8rem; color: var(--text-muted); }
+      h1 { font-size: 1.9rem; }
+      .hero { padding: 36px 0 28px; }
+      .hero p { font-size: 0.95rem; }
       .hero-cta { flex-direction: column; align-items: center; }
-      .demo-card { padding: 20px 16px; }
-      .section { padding: 50px 0; }
-      h2 { font-size: 1.6rem; }
+      .demo-card { padding: 18px 14px; }
+      .section { padding: 44px 0; }
+      h2 { font-size: 1.5rem; }
       .tech-badges { gap: 6px; }
       .tech-badge { font-size: 0.78rem; padding: 5px 10px; }
       nav { flex-wrap: wrap; gap: 8px; }
