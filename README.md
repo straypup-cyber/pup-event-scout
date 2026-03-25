@@ -1,106 +1,59 @@
 # 🐾 Pup Event Scout
 
-> AI-powered venue finder for events. Built for the OpenClaw Lobster Cave Cannes Hackathon.
-
-[![Telegram](https://img.shields.io/badge/Telegram-@pupeventscout__bot-blue?logo=telegram)](https://t.me/pupeventscout_bot)
-[![Powered by Anthropic](https://img.shields.io/badge/AI-Anthropic%20Claude-orange)](https://anthropic.com)
-[![Built with OpenClaw](https://img.shields.io/badge/Platform-OpenClaw-purple)](https://openclaw.ai)
+> AI-powered venue finder for event planners. Built for the OpenClaw Lobster Cave Cannes Hackathon.
 
 ## What It Does
 
-Pup Event Scout helps event planners find perfect venues with a simple natural language request:
+Tell the bot what you need in plain English. It finds real venues, ranks them, and sends each one with photos and a budget estimate.
 
-> "Find a venue in Cannes for 50 people, $5k budget, rooftop vibe"
+**Example:** _Find a rooftop venue in Cannes for 50 people, $5k budget, cocktail vibe_
 
-The bot will:
-1. 🧠 Use Claude AI to parse your request (location, capacity, budget, vibe)
-2. 🔍 Search DuckDuckGo for real venues matching your criteria
-3. 🎯 Return a curated shortlist of 3-5 venues with full details
-
-## Hackathon
-
-**Event:** OpenClaw Lobster Cave Cannes Hackathon  
-**Track:** Event Scout  
-**Team:** Stray Pup AI
-
-## Features
-
-- 🤖 Natural language understanding via Anthropic Claude Haiku
-- 🔍 Real venue search via DuckDuckGo (no API key needed)
-- 📱 Telegram bot interface
-- 🌐 Web landing page
-- ⚡ Fast, concise responses
+→ Bot returns 3-4 venues, each as a separate message with:
+- 📍 Address
+- ⭐ Google rating
+- 👥 Capacity estimate
+- 💰 Expected budget range
+- ✨ Vibe match
+- 📸 Photos from Google Places
 
 ## Try It
 
-**Telegram Bot:** [@pupeventscout_bot](https://t.me/pupeventscout_bot)
-
-Example queries:
-- "Venue in Cannes for 50 people, rooftop, $5k budget"
-- "Conference space in Nice, 100 people, professional"
-- "Beachfront event space Monaco, luxury, 80 guests"
+🤖 Telegram: [@pupeventscout_bot](https://t.me/pupeventscout_bot)
+🌐 Website: http://139.59.169.236
 
 ## Tech Stack
 
 | Component | Technology |
-|-----------|-----------|
-| Bot Framework | python-telegram-bot v20+ |
-| AI/LLM | Anthropic Claude Haiku (claude-haiku-4-5) |
-| Search | DuckDuckGo HTML scraping |
-| Platform | OpenClaw |
-| Deployment | DigitalOcean |
+|-----------|------------|
+| Bot framework | python-telegram-bot v20+ |
+| AI | Anthropic Claude Sonnet |
+| Venue data | Google Places API |
+| Hosting | DigitalOcean + systemd + nginx |
+| Runtime | OpenClaw |
 
 ## Setup
-
-### Prerequisites
-- Python 3.10+
-- Telegram Bot Token
-- Anthropic API Key
-
-### Install & Run
 
 ```bash
 git clone https://github.com/straypup-cyber/pup-event-scout
 cd pup-event-scout
-
-# Configure credentials
-cp .env.example .env
-# Edit .env with your TELEGRAM_TOKEN and ANTHROPIC_API_KEY
-
-# Start the bot
-./start.sh
-```
-
-### Manual Start
-
-```bash
 pip3 install -r requirements.txt
+cp .env.example .env
+# Edit .env with your keys
 python3 bot.py
 ```
 
-## Project Structure
+## Environment Variables
 
 ```
-pup-event-scout/
-├── bot.py              # Main Telegram bot
-├── index.html          # Landing page
-├── requirements.txt    # Python dependencies
-├── start.sh           # Quick start script
-├── .env.example       # Environment template
-├── .env               # Your credentials (not in git!)
-├── AGENTS.md          # Agent workspace instructions
-├── SOUL.md            # Bot persona
-└── README.md          # This file
+TELEGRAM_TOKEN=your_bot_token
+ANTHROPIC_API_KEY=your_anthropic_key
+GOOGLE_PLACES_API_KEY=your_google_places_key
 ```
 
-## How It Works
+## Hackathon
 
-1. User sends a message like "venue in Cannes for 50 people"
-2. Claude parses the request and generates targeted search queries
-3. DuckDuckGo is scraped for venue results
-4. Claude analyzes the results and formats a helpful shortlist
-5. User gets 3-5 venues with name, address, capacity, vibe match, and links
+Built for [OpenClaw Lobster Cave Cannes](https://identityhub.app/contests/openclaw-eth-cc) — Event Scout track.
+Demo day: March 30, 2026 in Cannes.
 
-## License
-
-MIT - Built for hackathon purposes
+---
+Made with 🐾 by Stray Pup
