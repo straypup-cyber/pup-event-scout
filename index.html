@@ -477,7 +477,7 @@ async function runSearch(query) {
     // Show map for first venue
     if (data.venues[0] && data.venues[0].name) {
       const q = encodeURIComponent(data.venues[0].name + ' ' + (data.location || ''));
-      document.getElementById('map-iframe').src = `https://www.google.com/maps/embed/v1/search?key=AIzaSyCITfLIJjc-uxn7RrPsM5nIRMNd44JgxxI&q=${q}`;
+      document.getElementById('map-iframe').src = `https://www.google.com/maps/embed/v1/search?key=MAPS_KEY_PLACEHOLDER&q=${q}`;
       document.getElementById('map-wrap').style.display = 'block';
     }
   } catch(e) {
