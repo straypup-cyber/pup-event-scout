@@ -231,8 +231,26 @@
       margin-bottom: 16px;
     }
 
+    @media (max-width: 900px) {
+      .steps { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 600px) {
       .form-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .step { padding: 16px; }
+      .step-num { width: 32px; height: 32px; font-size: 0.9rem; margin-bottom: 10px; }
+      .step h3 { font-size: 0.9rem; margin-bottom: 6px; }
+      .step p { font-size: 0.8rem; }
+      h1 { font-size: 2rem; }
+      .hero { padding: 40px 0 30px; }
+      .hero p { font-size: 1rem; }
+      .hero-cta { flex-direction: column; align-items: center; }
+      .demo-card { padding: 20px 16px; }
+      .section { padding: 50px 0; }
+      h2 { font-size: 1.6rem; }
+      .tech-badges { gap: 6px; }
+      .tech-badge { font-size: 0.78rem; padding: 5px 10px; }
+      nav { flex-wrap: wrap; gap: 8px; }
     }
 
     .form-group {
