@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pup Scout — AI Place Discovery</title>
 <meta name="description" content="AI-powered venue finder, night out planner & events scout. Find the perfect place in seconds.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{--bg:#0a0a0f;--s1:#13131a;--s2:#1e1e2e;--border:#2a2a3d;--accent:#7c5cfc;--accent2:#5c8afc;--text:#e2e2f0;--muted:#8888aa;--success:#22c55e;--r:12px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -15,8 +17,16 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:16px 2
 .nav-logo{font-weight:700;font-size:1.1rem;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .nav-right{display:flex;align-items:center;gap:12px}
 /* Lang switcher */
-.lang-btn{background:none;border:none;cursor:pointer;font-size:1.1rem;opacity:.6;transition:opacity .2s;padding:2px 4px}
-.lang-btn.active{opacity:1}
+.lang-picker{position:relative}
+.lang-trigger{display:flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:.85rem;color:var(--text);white-space:nowrap;transition:border-color .2s}
+.lang-trigger:hover{border-color:var(--accent)}
+.lang-trigger .lang-arrow{color:var(--muted);font-size:.65rem;transition:transform .2s}
+.lang-picker.open .lang-arrow{transform:rotate(180deg)}
+.lang-menu{position:absolute;right:0;top:calc(100% + 6px);background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:none;z-index:300;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.lang-picker.open .lang-menu{display:block}
+.lang-option{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;font-size:.88rem;transition:background .12s}
+.lang-option:hover,.lang-option.active{background:var(--s2)}
+.lang-option.active{color:var(--accent)}
 /* Auth */
 #auth-area{position:relative}
 .sign-in-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600}
@@ -45,17 +55,18 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:16px 2
 .mode-tab{flex:1;min-width:120px;padding:12px 16px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--muted);font-size:.88rem;text-align:center;transition:all .2s;font-weight:500}
 .mode-tab.active{background:linear-gradient(135deg,rgba(124,92,252,.2),rgba(92,138,252,.1));border-color:var(--accent);color:var(--text)}
 /* SEARCH CARD */
-.search-card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:24px}
+.search-card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:24px}
 .sub-tabs{display:flex;gap:6px;margin-bottom:20px}
 .sub-tab{flex:1;padding:9px;background:var(--s2);border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--muted);font-size:.85rem;text-align:center}
 .sub-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .form-group{display:flex;flex-direction:column;gap:6px}
 .form-group label{font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-.form-group input,.form-group select,.form-group textarea{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:.92rem;outline:none;transition:border .2s;font-family:inherit}
+.form-group input,.form-group select,.form-group textarea{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:.92rem;outline:none;transition:border .2s;font-family:inherit;width:100%;box-sizing:border-box;height:44px}
+.form-group textarea{height:auto;min-height:58px;resize:none}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent)}
 .form-group select option{background:var(--s2)}
-.form-group textarea{resize:vertical;min-height:90px}
+.form-group select:disabled,.form-group input:disabled{opacity:.4;cursor:not-allowed}
 .form-full{grid-column:1/-1}
 .search-btn{width:100%;justify-content:center;margin-top:8px;padding:14px;font-size:1rem}
 /* RESULTS */
@@ -77,7 +88,15 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:16px 2
 .venue-actions{display:flex;gap:8px;flex-wrap:wrap}
 /* MAP */
 .map-wrap{margin-top:20px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border)}
-.map-wrap iframe{width:100%;height:300px;border:none;display:block}
+.map-wrap #map-container{width:100%;height:340px;display:block}
+.leaflet-popup-content-wrapper{background:var(--s1)!important;color:var(--text)!important;border:1px solid var(--border)!important;box-shadow:0 4px 20px rgba(0,0,0,.4)!important;border-radius:10px!important}
+.leaflet-popup-tip{background:var(--s1)!important}
+.map-popup-name{font-weight:700;font-size:.92rem;margin-bottom:4px}
+.map-popup-addr{font-size:.78rem;color:#8888aa;margin-bottom:6px}
+.map-popup-tags{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
+.map-popup-tag{font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(124,92,252,.15);color:#a78bfa}
+.map-popup-link{font-size:.8rem;color:#7c5cfc;text-decoration:none;display:inline-block;margin-top:2px}
+.map-marker-num{background:linear-gradient(135deg,#7c5cfc,#5c8afc);color:#fff;font-weight:800;font-size:.85rem;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
 /* DASHBOARD PANEL */
 .panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:none}
 .panel-overlay.open{display:block}
@@ -87,8 +106,8 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:16px 2
 .panel-close{background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer}
 .panel-section{margin-bottom:24px}
 .panel-section h4{font-size:.8rem;text-transform:uppercase;color:var(--muted);letter-spacing:.08em;margin-bottom:12px}
-.search-item{padding:10px;background:var(--s2);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:.85rem;border:1px solid var(--border)}
-.search-item:hover{border-color:var(--accent)}
+.search-item{padding:12px;background:var(--s2);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:.85rem;border:1px solid var(--border);transition:border-color .15s,background .15s}
+.search-item:hover{border-color:var(--accent);background:rgba(124,92,252,.06)}
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
 .modal-overlay.open{display:flex}
@@ -120,6 +139,29 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
 @keyframes dots{0%,100%{content:'...'}33%{content:'.'}66%{content:'...'}}
 .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
+.form-full{grid-column:1/-1}
+/* CUSTOM SELECT */
+.csel{position:relative}
+.csel-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:0 14px;color:var(--text);font-size:.92rem;height:44px;cursor:pointer;transition:border-color .2s;user-select:none}
+.csel-trigger:hover{border-color:rgba(124,92,252,.5)}
+.csel.open .csel-trigger{border-color:var(--accent)}
+.csel-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.csel-arrow{color:var(--muted);font-size:.65rem;transition:transform .2s;flex-shrink:0}
+.csel.open .csel-arrow{transform:rotate(180deg)}
+.csel-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden auto;display:none;z-index:400;box-shadow:0 8px 24px rgba(0,0,0,.4);max-height:220px}
+.csel.open .csel-menu{display:block}
+.csel-option{padding:9px 14px;cursor:pointer;font-size:.88rem;transition:background .12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.csel-option:hover{background:var(--s2)}
+.csel-option.selected{background:rgba(124,92,252,.1);color:var(--accent)}
+.csel.disabled .csel-trigger{opacity:.4;cursor:not-allowed;pointer-events:none}
+/* AUTOCOMPLETE */
+.autocomplete-wrap{position:relative}
+.autocomplete-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;z-index:500;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+.autocomplete-dropdown.open{display:block}
+.ac-item{padding:10px 14px;cursor:pointer;font-size:.88rem;display:flex;align-items:center;gap:8px;transition:background .12s}
+.ac-item:hover,.ac-item.focused{background:var(--s2)}
+.ac-item .ac-icon{color:var(--muted);font-size:.9rem;flex-shrink:0}
+.ac-item .ac-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* RESPONSIVE */
 @media(max-width:768px){
   .steps{grid-template-columns:1fr;gap:10px}
@@ -149,14 +191,23 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
 <!-- NAV -->
 <nav>
   <div class="nav-logo">🐾 Pup Scout</div>
+  <!-- hidden sign-in label -->
+  <span id="nav-signin-lbl" style="display:none">Sign in</span>
   <div class="nav-right">
     <!-- Language switcher -->
-    <div id="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('en')" title="English">🇬🇧</button>
-      <button class="lang-btn" onclick="setLang('ru')" title="Русский">🇷🇺</button>
-      <button class="lang-btn" onclick="setLang('fr')" title="Français">🇫🇷</button>
-      <button class="lang-btn" onclick="setLang('zh')" title="中文">🇨🇳</button>
-      <button class="lang-btn" onclick="setLang('ar')" title="العربية">🇸🇦</button>
+    <div class="lang-picker" id="lang-picker">
+      <div class="lang-trigger" onclick="toggleLangMenu()">
+        <span id="lang-flag">🇬🇧</span>
+        <span id="lang-label">EN</span>
+        <span class="lang-arrow">▼</span>
+      </div>
+      <div class="lang-menu" id="lang-menu">
+        <div class="lang-option active" data-lang="en" onclick="setLang('en')">🇬🇧 <span>English</span></div>
+        <div class="lang-option" data-lang="ru" onclick="setLang('ru')">🇷🇺 <span>Русский</span></div>
+        <div class="lang-option" data-lang="fr" onclick="setLang('fr')">🇫🇷 <span>Français</span></div>
+        <div class="lang-option" data-lang="zh" onclick="setLang('zh')">🇨🇳 <span>中文</span></div>
+        <div class="lang-option" data-lang="ar" onclick="setLang('ar')">🇸🇦 <span>العربية</span></div>
+      </div>
     </div>
     <!-- Auth -->
     <div id="auth-area">
@@ -164,14 +215,9 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
         Sign in
       </button>
-      <div id="tg-widget-wrap" style="display:none;position:absolute;right:0;top:calc(100%+8px);background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:200;min-width:200px">
+      <div id="tg-widget-wrap" style="position:absolute;right:0;top:calc(100% + 8px);background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:200;min-width:220px;visibility:hidden;opacity:0;pointer-events:none;transition:opacity .15s">
         <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">Sign in with Telegram:</p>
-        <script async src="https://telegram.org/js/telegram-widget.js?22"
-          data-telegram-login="pupeventscout_bot"
-          data-size="medium"
-          data-onauth="onTelegramAuth(user)"
-          data-request-access="write">
-        </script>
+        <div id="tg-btn-container"></div>
       </div>
       <div id="user-btn-wrap" style="display:none">
         <button class="user-avatar-btn" onclick="toggleDropdown()">
@@ -191,81 +237,159 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
 </nav>
 
 <!-- HERO -->
-<div style="max-width:700px;margin:0 auto;padding:0 16px">
-  <div class="hero">
-    <h1 data-t="heroTitle">Find the <span class="grad">perfect place</span><br>in seconds</h1>
-    <p data-t="heroSub">AI-powered venue scout, night out planner & events finder. Just describe what you need.</p>
-    <div class="hero-cta">
-      <a href="https://t.me/pupeventscout_bot" class="btn btn-primary" target="_blank">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-        Try on Telegram
-      </a>
-    </div>
-  </div>
-</div>
-
-<!-- SEARCH -->
+<!-- HERO + SEARCH -->
 <div class="section-wrap">
-  <!-- Mode tabs -->
-  <div class="mode-tabs">
-    <button class="mode-tab active" onclick="setMode('venue')" id="mode-venue">🏛 <span data-t="modeVenue">Venue Scout</span></button>
-    <button class="mode-tab" onclick="setMode('nightout')" id="mode-nightout">🌃 <span data-t="modeNight">Night Out</span></button>
-    <button class="mode-tab" onclick="setMode('events')" id="mode-events">🎉 <span data-t="modeEvents">Weekend Events</span></button>
+  <!-- Hero strip -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 4px 16px;flex-wrap:wrap;gap:8px">
+    <div>
+      <h1 style="font-size:clamp(1.4rem,3vw,2rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;margin:0 0 4px">Find the <span class="grad">perfect place</span> in seconds</h1>
+      <p style="color:var(--muted);font-size:.85rem;margin:0">AI-powered venue scout, night out planner & events finder</p>
+    </div>
+    <a href="https://t.me/pupeventscout_bot" class="btn btn-secondary btn-sm" target="_blank" style="white-space:nowrap;flex-shrink:0">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+      Telegram bot
+    </a>
   </div>
 
   <div class="search-card">
-    <!-- Sub-tabs -->
-    <div class="sub-tabs">
-      <button class="sub-tab active" onclick="setSubTab('form')" id="subtab-form" data-t="tabForm">📋 Quick Form</button>
-      <button class="sub-tab" onclick="setSubTab('text')" id="subtab-text" data-t="tabText">💬 Free Text</button>
-    </div>
-
-    <!-- Form mode -->
-    <div id="input-form">
-      <div class="form-grid">
-        <div class="form-group">
-          <label data-t="labelCity">📍 City / Location</label>
-          <input type="text" id="f-city" placeholder="Paris, Cannes, London...">
-        </div>
-        <div class="form-group">
-          <label data-t="labelCap">👥 Capacity</label>
-          <input type="text" id="f-cap" placeholder="50 people">
-        </div>
-        <div class="form-group">
-          <label data-t="labelBudget">💰 Budget</label>
-          <input type="text" id="f-budget" placeholder="$5,000">
-        </div>
-        <div class="form-group">
-          <label data-t="labelVibe">🎨 Vibe</label>
-          <select id="f-vibe">
-            <option value="">Any</option>
-            <option value="rooftop">🌇 Rooftop</option>
-            <option value="beachfront">🏖 Beachfront</option>
-            <option value="luxury">✨ Luxury</option>
-            <option value="creative">🎨 Creative</option>
-            <option value="corporate">💼 Corporate</option>
-            <option value="garden">🌿 Garden / Outdoor</option>
-            <option value="intimate">🕯 Intimate</option>
-            <option value="nightlife">🎵 Nightlife</option>
-            <option value="historic">🏛 Historic</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>📅 Date (optional)</label>
-          <input type="date" id="f-date">
-        </div>
-      </div>
-      <button class="btn btn-primary search-btn" onclick="doSearchForm()" data-t="btnSearch">🐾 Find Places</button>
-    </div>
-
-    <!-- Free text mode -->
-    <div id="input-text" style="display:none">
+    <!-- Universal form -->
+    <div class="form-grid">
       <div class="form-group">
-        <label data-t="labelFreeText">💬 Describe what you need</label>
-        <textarea id="t-query" rows="3" placeholder="e.g. Rooftop venue in Cannes for 50 people, $5k budget, cocktail vibe"></textarea>
+        <label id="lbl-city">📍 City / Location</label>
+        <div class="autocomplete-wrap">
+          <input type="text" id="f-city" placeholder="Paris, Cannes, London..." autocomplete="off">
+          <div class="autocomplete-dropdown" id="city-dropdown"></div>
+        </div>
       </div>
-      <button class="btn btn-primary search-btn" onclick="doSearchText()" data-t="btnSearch">🐾 Find Places</button>
+      <div class="form-group">
+        <label id="lbl-type">🎯 Looking for</label>
+        <div class="csel" id="csel-type" data-value="event venue space">
+          <div class="csel-trigger" onclick="cselToggle('csel-type')">
+            <span class="csel-label" data-tk="typeVenue">🏛 Event Venue</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="event venue space" data-tk="typeVenue">🏛 Event Venue</div>
+            <div class="csel-option" data-value="night out bars clubs restaurants" data-tk="typeNight">🌃 Night Out</div>
+            <div class="csel-option" data-value="events concerts shows activities" data-tk="typeEvents">🎉 Events & Things to Do</div>
+            <div class="csel-option" data-value="experience activity adventure" data-tk="typeExp">🎯 Experiences & Activities</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="lbl-size">👥 Group size</label>
+        <div class="csel" id="csel-size" data-value="">
+          <div class="csel-trigger" onclick="cselToggle('csel-size')">
+            <span class="csel-label" data-tk="sizeAny">Any</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="" data-tk="sizeAny">Any</div>
+            <div class="csel-option" data-value="just me" data-tk="sizeMe">Just me</div>
+            <div class="csel-option" data-value="2 people" data-tk="size2">2 people</div>
+            <div class="csel-option" data-value="small group 3-5" data-tk="size35">3–5 people</div>
+            <div class="csel-option" data-value="group of 6-15" data-tk="size615">6–15 people</div>
+            <div class="csel-option" data-value="20-50 people" data-tk="size2050">20–50 people</div>
+            <div class="csel-option" data-value="50-100 people" data-tk="size50100">50–100 people</div>
+            <div class="csel-option" data-value="100+ people" data-tk="size100">100+ people</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="lbl-budget">💰 Budget</label>
+        <div class="csel" id="csel-budget" data-value="">
+          <div class="csel-trigger" onclick="cselToggle('csel-budget')">
+            <span class="csel-label" data-tk="budgetAny">Any</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="" data-tk="budgetAny">Any</div>
+            <div class="csel-option" data-value="free or budget affordable" data-tk="budgetFree">🆓 Free / Budget</div>
+            <div class="csel-option" data-value="moderate mid-range" data-tk="budgetMid">💛 Moderate</div>
+            <div class="csel-option" data-value="upscale premium" data-tk="budgetUp">🟠 Upscale</div>
+            <div class="csel-option" data-value="luxury high-end" data-tk="budgetLux">🔴 Luxury</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="lbl-vibe">✨ Vibe</label>
+        <div class="csel" id="csel-vibe" data-value="">
+          <div class="csel-trigger" onclick="cselToggle('csel-vibe')">
+            <span class="csel-label" data-tk="vibeAny">Any</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="" data-tk="vibeAny">Any</div>
+            <div class="csel-option" data-value="rooftop outdoor views" data-tk="vibeRoof">🌇 Rooftop / Outdoor</div>
+            <div class="csel-option" data-value="beachfront waterfront" data-tk="vibeBeach">🏖 Beach / Waterfront</div>
+            <div class="csel-option" data-value="luxury elegant upscale" data-tk="vibeLux">✨ Luxury</div>
+            <div class="csel-option" data-value="creative loft industrial" data-tk="vibeCre">🎨 Creative / Loft</div>
+            <div class="csel-option" data-value="intimate cozy private" data-tk="vibeInt">🕯 Intimate / Private</div>
+            <div class="csel-option" data-value="lively music dancing fun" data-tk="vibeLiv">🎵 Lively / Music</div>
+            <div class="csel-option" data-value="corporate professional" data-tk="vibeCorp">💼 Corporate</div>
+            <div class="csel-option" data-value="historic classic architecture" data-tk="vibeHist">🏛 Historic</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="lbl-when">📅 When</label>
+        <div class="csel" id="csel-when" data-value="">
+          <div class="csel-trigger" onclick="cselToggle('csel-when')">
+            <span class="csel-label" data-tk="whenAny">Any time</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="" data-tk="whenAny">Any time</div>
+            <div class="csel-option" data-value="tonight" data-tk="whenTonight">Tonight</div>
+            <div class="csel-option" data-value="this weekend" data-tk="whenWeekend">This weekend</div>
+            <div class="csel-option" data-value="this week" data-tk="whenWeek">This week</div>
+            <div class="csel-option" data-value="next weekend" data-tk="whenNext">Next weekend</div>
+            <div class="csel-option" data-value="next month" data-tk="whenMonth">Next month</div>
+            <div class="csel-option" data-value="specific_date" data-tk="whenSpecific">📆 Specific date…</div>
+          </div>
+        </div>
+        <input type="date" id="f-date-pick" style="display:none;margin-top:8px;height:44px" onchange="this.dataset.val=this.value">
+      </div>
+      <div class="form-group">
+        <label id="lbl-near">📌 Near (optional)</label>
+        <div class="autocomplete-wrap">
+          <input type="text" id="f-near" placeholder="Eiffel Tower, Palais des Festivals…" autocomplete="off" disabled>
+          <div class="autocomplete-dropdown" id="near-dropdown"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="lbl-radius">📡 Radius</label>
+        <div class="csel disabled" id="csel-radius" data-value="">
+          <div class="csel-trigger" onclick="cselToggle('csel-radius')">
+            <span class="csel-label" data-tk="radAny">Any distance</span>
+            <span class="csel-arrow">▼</span>
+          </div>
+          <div class="csel-menu">
+            <div class="csel-option selected" data-value="" data-tk="radAny">Any distance</div>
+            <div class="csel-option" data-value="1 km" data-tk="rad1">Within 1 km</div>
+            <div class="csel-option" data-value="2 km" data-tk="rad2">Within 2 km</div>
+            <div class="csel-option" data-value="5 km" data-tk="rad5">Within 5 km</div>
+            <div class="csel-option" data-value="10 km" data-tk="rad10">Within 10 km</div>
+            <div class="csel-option" data-value="25 km" data-tk="rad25">Within 25 km</div>
+            <div class="csel-option" data-value="50 km" data-tk="rad50">Within 50 km</div>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- Divider -->
+    <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span id="lbl-free" style="color:var(--muted);font-size:.8rem;white-space:nowrap">or describe in your own words</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+
+    <!-- Free text -->
+    <div class="form-group" style="margin-bottom:16px">
+      <textarea id="t-query" rows="2" placeholder="e.g. Rooftop bar in Nice for 8 people this Saturday, something lively but not too loud"></textarea>
+    </div>
+
+    <button class="btn btn-primary search-btn" onclick="doSearch()">🐾 Find Places</button>
 
     <!-- Results -->
     <div id="results-wrap" style="display:none;margin-top:24px">
@@ -274,11 +398,11 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
       </div>
       <div id="truncate-banner" style="display:none" class="truncate-banner">
         🔒 Sign in to see all results and save venues
-        <br><button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="showTelegramLogin()">Sign in with Telegram</button>
+        <br><button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="showLoginPrompt('save')">Sign in with Telegram</button>
       </div>
       <div id="results-list"></div>
       <div id="map-wrap" style="display:none" class="map-wrap">
-        <iframe id="map-iframe" src="" loading="lazy" allowfullscreen></iframe>
+        <div id="map-container"></div>
       </div>
     </div>
   </div>
@@ -301,13 +425,13 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
 <!-- FOOTER -->
 <footer>
   <div class="footer-links">
-    <a href="/terms">Terms</a>
-    <a href="/privacy">Privacy</a>
+    <a href="/terms" data-t="fTerms">Terms</a>
+    <a href="/privacy" data-t="fPrivacy">Privacy</a>
     <a href="https://github.com/straypup-cyber/pup-event-scout" target="_blank">GitHub</a>
     <a href="https://t.me/pupeventscout_bot" target="_blank">Telegram Bot</a>
   </div>
-  <p>🐾 Pup Scout — Built for OpenClaw Lobster Cave Cannes Hackathon 2026</p>
-  <p style="margin-top:6px">Powered by <a href="https://anthropic.com" target="_blank">Anthropic</a> + <a href="https://openclaw.ai" target="_blank">OpenClaw</a> + Google Places</p>
+  <p data-t="fTagline">🐾 Pup Scout — Built for OpenClaw Lobster Cave Cannes Hackathon 2026</p>
+  <p style="margin-top:6px" data-t="fPowered">Powered by <a href="https://anthropic.com" target="_blank">Anthropic</a> + <a href="https://openclaw.ai" target="_blank">OpenClaw</a> + Google Places</p>
 </footer>
 
 <!-- SIDE PANEL -->
@@ -320,15 +444,122 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
   <div id="panel-content"><div class="spinner"></div></div>
 </div>
 
+<!-- VENUE DETAIL MODAL -->
+<div class="modal-overlay" id="venue-detail-modal">
+  <div class="modal" style="max-width:520px;padding:0;overflow:hidden">
+    <div id="vd-photos" style="position:relative;height:200px;background:var(--s2);overflow:hidden">
+      <div id="vd-photo-strip" style="display:flex;height:100%;transition:transform .3s"></div>
+      <div id="vd-photo-dots" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:5px"></div>
+      <button onclick="closeModal('venue-detail-modal')" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div style="padding:20px 22px 22px">
+      <h3 id="vd-name" style="font-size:1.1rem;font-weight:700;margin-bottom:6px"></h3>
+      <div id="vd-address" style="color:var(--muted);font-size:.84rem;margin-bottom:10px"></div>
+      <div id="vd-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+      <div id="vd-hours" style="font-size:.8rem;color:var(--muted);margin-bottom:14px;display:none">
+        <div style="font-weight:600;color:var(--text);margin-bottom:4px">Opening hours</div>
+        <div id="vd-hours-list"></div>
+      </div>
+      <div id="vd-actions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN PROMPT MODAL -->
+<div class="modal-overlay" id="login-prompt-modal">
+  <div class="modal" style="max-width:340px;text-align:center;padding:28px 24px">
+    <div style="font-size:2.2rem;margin-bottom:14px">🔐</div>
+    <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:8px;line-height:1.3" id="login-prompt-title">Sign in to continue</h3>
+    <p style="color:var(--muted);font-size:.84rem;margin-bottom:20px;line-height:1.5;max-width:260px;margin-left:auto;margin-right:auto" id="login-prompt-sub">Save venues and send email outreach with your free account.</p>
+    <div id="login-prompt-tg-btn" style="margin-bottom:10px;display:flex;justify-content:center"></div>
+    <button class="btn btn-secondary" style="width:100%;justify-content:center;height:44px;font-size:.88rem" onclick="closeModal('login-prompt-modal')" id="login-prompt-later">Maybe later</button>
+  </div>
+</div>
+
 <!-- EMAIL MODAL -->
 <div class="modal-overlay" id="email-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:500px">
     <div class="modal-header">
-      <strong>📧 Email Venue</strong>
+      <strong id="email-modal-title">📧 Email Venue</strong>
       <button class="modal-close" onclick="closeModal('email-modal')">✕</button>
     </div>
-    <div id="email-modal-body">
-      <div class="spinner"></div>
+    <!-- Mode toggle -->
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      <button id="email-mode-draft" class="btn btn-secondary" style="flex:1;justify-content:center;height:38px;font-size:.85rem;border-color:var(--accent);color:var(--text)" onclick="setEmailMode('draft')">✏️ Get draft</button>
+      <button id="email-mode-send" class="btn btn-outline" style="flex:1;justify-content:center;height:38px;font-size:.85rem" onclick="setEmailMode('send')">📤 Send for me</button>
+    </div>
+
+    <!-- Step 1: Details form -->
+    <div id="email-step-details">
+      <p style="color:var(--muted);font-size:.84rem;margin-bottom:16px" id="email-venue-name-line"></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group">
+          <label style="font-size:.75rem">🎯 Occasion</label>
+          <div class="csel" id="csel-email-occasion" data-value="event">
+            <div class="csel-trigger" onclick="cselToggle('csel-email-occasion')">
+              <span class="csel-label">🎉 Private event</span>
+              <span class="csel-arrow">▼</span>
+            </div>
+            <div class="csel-menu">
+              <div class="csel-option selected" data-value="event">🎉 Private event</div>
+              <div class="csel-option" data-value="corporate">💼 Corporate / business</div>
+              <div class="csel-option" data-value="wedding">💍 Wedding / ceremony</div>
+              <div class="csel-option" data-value="birthday">🎂 Birthday party</div>
+              <div class="csel-option" data-value="date">🌹 Romantic dinner / date</div>
+              <div class="csel-option" data-value="nightout">🥂 Night out with friends</div>
+              <div class="csel-option" data-value="lunch">🍽 Business lunch</div>
+              <div class="csel-option" data-value="other">✏️ Other</div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.75rem">👥 Guests</label>
+          <input type="text" id="email-guests" placeholder="e.g. 2 people, 30 guests…" style="height:44px">
+        </div>
+        <div class="form-group">
+          <label style="font-size:.75rem">📅 Date (optional)</label>
+          <input type="text" id="email-date" placeholder="e.g. March 30, this Saturday…" style="height:44px">
+        </div>
+        <div class="form-group">
+          <label style="font-size:.75rem">🕐 Time (optional)</label>
+          <input type="text" id="email-time" placeholder="e.g. 7pm, lunch, evening…" style="height:44px">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label style="font-size:.75rem">💬 Anything specific (budget, requests, questions)</label>
+          <textarea id="email-notes" rows="2" style="min-height:58px;resize:none" placeholder="e.g. budget ~$500, need outdoor terrace, wheelchair access…"></textarea>
+        </div>
+        <!-- CC field — shown only in "send for me" mode -->
+        <div class="form-group" id="email-cc-group" style="grid-column:1/-1;display:none">
+          <label style="font-size:.75rem">📬 Your email (for CC)</label>
+          <input type="email" id="email-cc" placeholder="your@email.com — we'll CC you on the reply" style="height:44px">
+          <p style="font-size:.75rem;color:var(--muted);margin-top:5px">The venue's reply will also be forwarded to you via Telegram bot.</p>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="email-generate-btn" style="width:100%;justify-content:center;height:44px" onclick="generateEmail()">✉️ Generate draft</button>
+    </div>
+    <!-- Step 2: Generated draft -->
+    <div id="email-step-draft" style="display:none">
+      <!-- Email composer view -->
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
+        <!-- To -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--muted);font-size:.8rem;width:52px;flex-shrink:0">To:</span>
+          <input id="email-to" type="email" placeholder="venue@example.com" style="flex:1;background:none;border:none;outline:none;color:var(--text);font-size:.88rem;height:auto;padding:0">
+          <span id="email-to-hint" style="font-size:.72rem;color:var(--muted);white-space:nowrap"></span>
+        </div>
+        <!-- Subject -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--muted);font-size:.8rem;width:52px;flex-shrink:0">Subject:</span>
+          <input id="email-subject-input" type="text" style="flex:1;background:none;border:none;outline:none;color:var(--text);font-size:.88rem;font-weight:600;height:auto;padding:0">
+        </div>
+        <!-- Body -->
+        <textarea id="email-body-text" style="width:100%;min-height:200px;resize:vertical;background:none;border:none;outline:none;padding:12px 14px;color:var(--text);font-size:.86rem;font-family:inherit;line-height:1.6"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-send-email" style="flex:1;justify-content:center;height:44px" onclick="sendEmail()">📤 Send</button>
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;height:44px" onclick="copyFullEmail()">📋 Copy</button>
+        <button class="btn btn-outline" style="flex:1;justify-content:center;height:44px" onclick="showEmailDetails()">✏️ Edit</button>
+      </div>
     </div>
   </div>
 </div>
@@ -340,31 +571,28 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
       <strong>⚡ Upgrade to Premium</strong>
       <button class="modal-close" onclick="closeModal('upgrade-modal')">✕</button>
     </div>
-    <p style="color:var(--muted);font-size:.88rem;margin-bottom:16px">Unlock email outreach, voice calls, full history, and unlimited results.</p>
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:16px">Unlock unlimited results, email outreach, and full search history.</p>
     <div class="pricing-grid">
-      <div class="price-card">
-        <div class="label">Monthly</div>
+      <div class="price-card" style="cursor:pointer;transition:border-color .2s" onclick="payWithTon('subscription_monthly')" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor=''">
+        <div class="label">⚡ Monthly</div>
         <div class="amount">5 TON</div>
-        <div class="label">All features, 30 days</div>
+        <div class="label">Unlimited results · 30 days</div>
+        <div style="margin-top:8px"><button class="btn btn-sm btn-primary" style="width:100%;justify-content:center">Pay with TON</button></div>
       </div>
-      <div class="price-card">
-        <div class="label">Single Call</div>
-        <div class="amount">1 TON</div>
-        <div class="label">AI calls one venue</div>
-      </div>
-      <div class="price-card">
-        <div class="label">Email Credit</div>
+      <div class="price-card" style="cursor:pointer;transition:border-color .2s" onclick="payWithTon('email_credit')" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor=''">
+        <div class="label">📧 Email Credit</div>
         <div class="amount">0.2 TON</div>
         <div class="label">AI drafts outreach email</div>
+        <div style="margin-top:8px"><button class="btn btn-sm btn-secondary" style="width:100%;justify-content:center">Pay with TON</button></div>
       </div>
-      <div class="price-card" style="background:rgba(124,92,252,.08);border-color:rgba(124,92,252,.3)">
-        <div class="label" style="color:#a78bfa">Coming Soon</div>
-        <div class="amount" style="font-size:1rem">Voice Calls</div>
+      <div class="price-card" style="opacity:.5;grid-column:1/-1">
+        <div class="label" style="color:#a78bfa">🔜 Soon</div>
+        <div class="amount" style="font-size:1rem">1 TON</div>
         <div class="label">AI calls venue for you</div>
       </div>
     </div>
     <div id="ton-connect-wrap" style="margin-top:16px;text-align:center">
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Connect your TON wallet to pay:</p>
+      <p style="font-size:.78rem;color:var(--muted);margin-bottom:8px">Wallet connects automatically when you click Pay:</p>
       <div id="ton-connect-button"></div>
     </div>
   </div>
@@ -372,78 +600,366 @@ footer a{color:var(--muted)}footer a:hover{color:var(--text)}
 
 <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
 <script>
-const API = 'https://pupeventscout.duckdns.org';
+const API = 'https://pupscout.co.uk';
 let currentUser = null;
 let currentMode = 'venue';
 let lastSearchId = null;
 let tonConnectUI = null;
+let leafletMap = null;
+let mapMarkers = [];
+let currentIsPremium = false;
 
 // ─── Translations ────────────────────────────────────────────────────────────
+const LANGS = {
+  en: {flag:'🇬🇧', label:'EN'},
+  ru: {flag:'🇷🇺', label:'RU'},
+  fr: {flag:'🇫🇷', label:'FR'},
+  zh: {flag:'🇨🇳', label:'ZH'},
+  ar: {flag:'🇸🇦', label:'AR'},
+};
+
 const T = {
-  en:{heroTitle:'Find the perfect place in seconds',heroSub:'AI-powered venue scout, night out planner & events finder.',modeVenue:'Venue Scout',modeNight:'Night Out',modeEvents:'Weekend Events',tabForm:'📋 Quick Form',tabText:'💬 Free Text',labelCity:'📍 City / Location',labelCap:'👥 Capacity',labelBudget:'💰 Budget',labelVibe:'🎨 Vibe',labelFreeText:'💬 Describe what you need',btnSearch:'🐾 Find Places',howTitle:'From request to shortlist in seconds',howSub:'AI does the research so you don\'t have to',s1h:'Describe',s1p:'City, capacity, budget, vibe — plain English',s2h:'AI Parses',s2p:'Claude extracts requirements and searches',s3h:'Real Search',s3p:'Google Places returns real rated venues',s4h:'Shortlist',s4p:'3–5 venues with photos, budget & vibe'},
-  ru:{heroTitle:'Найди идеальное место за секунды',heroSub:'AI-помощник для поиска площадок, вечеринок и мероприятий.',modeVenue:'Площадки',modeNight:'Вечер',modeEvents:'Выходные',tabForm:'📋 Форма',tabText:'💬 Свободный текст',labelCity:'📍 Город',labelCap:'👥 Вместимость',labelBudget:'💰 Бюджет',labelVibe:'🎨 Атмосфера',labelFreeText:'💬 Опиши что ищешь',btnSearch:'🐾 Найти',howTitle:'От запроса к списку за секунды',howSub:'AI делает исследование за тебя',s1h:'Опиши',s1p:'Город, гостей, бюджет, атмосферу',s2h:'AI анализирует',s2p:'Claude разбирает запрос и строит поиск',s3h:'Реальный поиск',s3p:'Google Places находит подходящие места',s4h:'Шортлист',s4p:'3–5 мест с фото, бюджетом и оценкой'},
-  fr:{heroTitle:'Trouvez le lieu parfait en secondes',heroSub:'Scout de lieux alimenté par IA. Décrivez simplement ce dont vous avez besoin.',modeVenue:'Lieux',modeNight:'Soirée',modeEvents:'Weekend',tabForm:'📋 Formulaire',tabText:'💬 Texte libre',labelCity:'📍 Ville',labelCap:'👥 Capacité',labelBudget:'💰 Budget',labelVibe:'🎨 Ambiance',labelFreeText:'💬 Décrivez ce que vous cherchez',btnSearch:'🐾 Chercher',howTitle:'De la demande à la liste en secondes',howSub:'L\'IA fait les recherches à votre place',s1h:'Décrire',s1p:'Ville, capacité, budget, ambiance',s2h:'IA analyse',s2p:'Claude extrait vos besoins',s3h:'Recherche réelle',s3p:'Google Places trouve des lieux réels',s4h:'Liste courte',s4p:'3–5 lieux avec photos et budget'},
-  zh:{heroTitle:'几秒钟找到完美地点',heroSub:'AI驱动的场地搜索、夜出规划和活动发现。',modeVenue:'场地搜索',modeNight:'夜生活',modeEvents:'周末活动',tabForm:'📋 快速表单',tabText:'💬 自由描述',labelCity:'📍 城市',labelCap:'👥 容量',labelBudget:'💰 预算',labelVibe:'🎨 氛围',labelFreeText:'💬 描述您的需求',btnSearch:'🐾 搜索',howTitle:'几秒钟从请求到列表',howSub:'AI替您做研究',s1h:'描述',s1p:'城市、人数、预算、氛围',s2h:'AI分析',s2p:'Claude提取需求并搜索',s3h:'真实搜索',s3p:'Google Places找到真实场地',s4h:'精选列表',s4p:'3-5个场地含照片和预算'},
-  ar:{heroTitle:'اعثر على المكان المثالي في ثوانٍ',heroSub:'مساعد AI للبحث عن الأماكن والفعاليات.',modeVenue:'صالات الأحداث',modeNight:'سهرة',modeEvents:'عطلة نهاية الأسبوع',tabForm:'📋 نموذج سريع',tabText:'💬 نص حر',labelCity:'📍 المدينة',labelCap:'👥 السعة',labelBudget:'💰 الميزانية',labelVibe:'🎨 الأجواء',labelFreeText:'💬 صف ما تحتاجه',btnSearch:'🐾 بحث',howTitle:'من الطلب إلى القائمة في ثوانٍ',howSub:'الذكاء الاصطناعي يبحث عنك',s1h:'صف',s1p:'المدينة والضيوف والميزانية',s2h:'تحليل AI',s2p:'Claude يستخرج المتطلبات',s3h:'بحث حقيقي',s3p:'Google Places يجد أماكن حقيقية',s4h:'قائمة مختصرة',s4p:'3-5 أماكن مع الصور والميزانية'},
+  en:{
+    signIn:'Sign in', tgBot:'Telegram bot', alsoTg:'Also on Telegram', maybeLater:'Maybe later',
+    fTerms:'Terms', fPrivacy:'Privacy', fTagline:'🐾 Pup Scout — Built for OpenClaw Lobster Cave Cannes Hackathon 2026',
+    fPowered:'Powered by Anthropic + OpenClaw + Google Places',
+    heroTitle:'Find the perfect place in seconds',
+    heroSub:'AI-powered venue scout, night out planner & events finder.',
+    btnSearch:'🐾 Find Places',
+    howTitle:'From request to shortlist in seconds',
+    howSub:"AI does the research so you don't have to",
+    s1h:'Describe',s1p:'City, capacity, budget, vibe — plain English',
+    s2h:'AI Parses',s2p:'Claude extracts requirements and searches',
+    s3h:'Real Search',s3p:'Google Places returns real rated venues',
+    s4h:'Shortlist',s4p:'3–5 venues with photos, budget & vibe',
+    lCity:'📍 City / Location',lType:'🎯 Looking for',lSize:'👥 Group size',
+    lBudget:'💰 Budget',lVibe:'✨ Vibe',lWhen:'📅 When',lNear:'📌 Near (optional)',lRadius:'📡 Radius',
+    lFreeText:'or describe in your own words',
+    phCity:'Paris, Cannes, London…',phNear:'Eiffel Tower, Palais des Festivals…',
+    phFree:'e.g. Rooftop bar in Nice for 8 people this Saturday, something lively but not too loud',
+    typeVenue:'🏛 Event Venue',typeNight:'🌃 Night Out',typeEvents:'🎉 Events & Things to Do',typeExp:'🎯 Experiences & Activities',
+    sizeAny:'Any',sizeMe:'Just me',size2:'2 people',size35:'3–5 people',size615:'6–15 people',
+    size2050:'20–50 people',size50100:'50–100 people',size100:'100+ people',
+    budgetAny:'Any',budgetFree:'🆓 Free / Budget',budgetMid:'💛 Moderate',budgetUp:'🟠 Upscale',budgetLux:'🔴 Luxury',
+    vibeAny:'Any',vibeRoof:'🌇 Rooftop / Outdoor',vibeBeach:'🏖 Beach / Waterfront',vibeLux:'✨ Luxury',
+    vibeCre:'🎨 Creative / Loft',vibeInt:'🕯 Intimate / Private',vibeLiv:'🎵 Lively / Music',vibeCorp:'💼 Corporate',vibeHist:'🏛 Historic',
+    whenAny:'Any time',whenTonight:'Tonight',whenWeekend:'This weekend',whenWeek:'This week',
+    whenNext:'Next weekend',whenMonth:'Next month',whenSpecific:'📆 Specific date…',
+    radAny:'Any distance',rad1:'Within 1 km',rad2:'Within 2 km',rad5:'Within 5 km',
+    rad10:'Within 10 km',rad25:'Within 25 km',rad50:'Within 50 km',
+  },
+  ru:{
+    signIn:'Войти', tgBot:'Telegram бот', alsoTg:'Также в Telegram', maybeLater:'Позже',
+    fTerms:'Условия', fPrivacy:'Конфиденциальность', fTagline:'🐾 Pup Scout — Hackathon OpenClaw Cannes 2026',
+    fPowered:'Работает на Anthropic + OpenClaw + Google Places',
+    heroTitle:'Найди идеальное место за секунды',
+    heroSub:'AI-помощник для поиска площадок, вечеринок и мероприятий.',
+    btnSearch:'🐾 Найти',
+    howTitle:'От запроса к шортлисту за секунды',
+    howSub:'AI делает исследование за тебя',
+    s1h:'Опиши',s1p:'Город, гостей, бюджет, атмосферу',
+    s2h:'AI анализирует',s2p:'Claude разбирает запрос и строит поиск',
+    s3h:'Реальный поиск',s3p:'Google Places находит подходящие места',
+    s4h:'Шортлист',s4p:'3–5 мест с фото, бюджетом и оценкой',
+    lCity:'📍 Город',lType:'🎯 Что ищем',lSize:'👥 Размер группы',
+    lBudget:'💰 Бюджет',lVibe:'✨ Атмосфера',lWhen:'📅 Когда',lNear:'📌 Рядом с (опционально)',lRadius:'📡 Радиус',
+    lFreeText:'или опиши своими словами',
+    phCity:'Париж, Канны, Москва…',phNear:'Эйфелева башня, Красная площадь…',
+    phFree:'Например: руфтоп-бар в Ницце на 8 человек в эту субботу, живо, но не слишком громко',
+    typeVenue:'🏛 Площадка для мероприятия',typeNight:'🌃 Вечер в городе',typeEvents:'🎉 События и активности',typeExp:'🎯 Активности и приключения',
+    sizeAny:'Любой',sizeMe:'Только я',size2:'2 человека',size35:'3–5 человек',size615:'6–15 человек',
+    size2050:'20–50 человек',size50100:'50–100 человек',size100:'100+ человек',
+    budgetAny:'Любой',budgetFree:'🆓 Бесплатно / Бюджетно',budgetMid:'💛 Средний',budgetUp:'🟠 Выше среднего',budgetLux:'🔴 Люкс',
+    vibeAny:'Любая',vibeRoof:'🌇 Руфтоп / На улице',vibeBeach:'🏖 Пляж / Набережная',vibeLux:'✨ Люкс',
+    vibeCre:'🎨 Креатив / Лофт',vibeInt:'🕯 Уютно / Приватно',vibeLiv:'🎵 Живо / Музыка',vibeCorp:'💼 Корпоратив',vibeHist:'🏛 Исторический',
+    whenAny:'Любое время',whenTonight:'Сегодня вечером',whenWeekend:'Эти выходные',whenWeek:'Эта неделя',
+    whenNext:'Следующие выходные',whenMonth:'Следующий месяц',whenSpecific:'📆 Конкретная дата…',
+    radAny:'Любое расстояние',rad1:'В пределах 1 км',rad2:'В пределах 2 км',rad5:'В пределах 5 км',
+    rad10:'В пределах 10 км',rad25:'В пределах 25 км',rad50:'В пределах 50 км',
+  },
+  fr:{
+    signIn:'Connexion', tgBot:'Bot Telegram', alsoTg:'Aussi sur Telegram', maybeLater:'Plus tard',
+    fTerms:'CGU', fPrivacy:'Confidentialité', fTagline:'🐾 Pup Scout — Hackathon OpenClaw Cannes 2026',
+    fPowered:'Propulsé par Anthropic + OpenClaw + Google Places',
+    heroTitle:'Trouvez le lieu parfait en secondes',
+    heroSub:'Scout de lieux IA — soirées, événements, venues.',
+    btnSearch:'🐾 Chercher',
+    howTitle:'De la demande à la liste en secondes',
+    howSub:"L'IA fait les recherches à votre place",
+    s1h:'Décrire',s1p:'Ville, capacité, budget, ambiance',
+    s2h:'IA analyse',s2p:'Claude extrait vos besoins',
+    s3h:'Recherche réelle',s3p:'Google Places trouve des lieux réels',
+    s4h:'Liste courte',s4p:'3–5 lieux avec photos et budget',
+    lCity:'📍 Ville',lType:'🎯 Recherche',lSize:'👥 Groupe',
+    lBudget:'💰 Budget',lVibe:'✨ Ambiance',lWhen:'📅 Quand',lNear:'📌 Près de (optionnel)',lRadius:'📡 Rayon',
+    lFreeText:'ou décrivez en vos propres mots',
+    phCity:'Paris, Cannes, Nice…',phNear:'Tour Eiffel, Palais des Festivals…',
+    phFree:'ex. Bar rooftop à Nice pour 8 personnes ce samedi, ambiance animée',
+    typeVenue:'🏛 Salle événementielle',typeNight:'🌃 Soirée',typeEvents:'🎉 Événements & Activités',typeExp:'🎯 Expériences & Aventures',
+    sizeAny:'Peu importe',sizeMe:'Juste moi',size2:'2 personnes',size35:'3–5 personnes',size615:'6–15 personnes',
+    size2050:'20–50 personnes',size50100:'50–100 personnes',size100:'100+ personnes',
+    budgetAny:'Peu importe',budgetFree:'🆓 Gratuit / Économique',budgetMid:'💛 Modéré',budgetUp:'🟠 Haut de gamme',budgetLux:'🔴 Luxe',
+    vibeAny:'Peu importe',vibeRoof:'🌇 Rooftop / Extérieur',vibeBeach:'🏖 Plage / Front de mer',vibeLux:'✨ Luxe',
+    vibeCre:'🎨 Créatif / Loft',vibeInt:'🕯 Intimiste',vibeLiv:'🎵 Animé / Musique',vibeCorp:'💼 Corporate',vibeHist:'🏛 Historique',
+    whenAny:'N\'importe quand',whenTonight:'Ce soir',whenWeekend:'Ce week-end',whenWeek:'Cette semaine',
+    whenNext:'Week-end prochain',whenMonth:'Mois prochain',whenSpecific:'📆 Date précise…',
+    radAny:'Toute distance',rad1:'Dans 1 km',rad2:'Dans 2 km',rad5:'Dans 5 km',
+    rad10:'Dans 10 km',rad25:'Dans 25 km',rad50:'Dans 50 km',
+  },
+  zh:{
+    signIn:'登录', tgBot:'Telegram机器人', alsoTg:'也在Telegram上', maybeLater:'稍后再说',
+    fTerms:'条款', fPrivacy:'隐私', fTagline:'🐾 Pup Scout — OpenClaw戛纳黑客马拉松2026',
+    fPowered:'由 Anthropic + OpenClaw + Google Places 提供支持',
+    heroTitle:'几秒钟找到完美地点',
+    heroSub:'AI驱动的场地搜索、夜出规划和活动发现。',
+    btnSearch:'🐾 搜索',
+    howTitle:'几秒钟从请求到列表',
+    howSub:'AI替您做研究',
+    s1h:'描述',s1p:'城市、人数、预算、氛围',
+    s2h:'AI分析',s2p:'Claude提取需求并搜索',
+    s3h:'真实搜索',s3p:'Google Places找到真实场地',
+    s4h:'精选列表',s4p:'3-5个场地含照片和预算',
+    lCity:'📍 城市',lType:'🎯 类型',lSize:'👥 人数',
+    lBudget:'💰 预算',lVibe:'✨ 氛围',lWhen:'📅 时间',lNear:'📌 附近（可选）',lRadius:'📡 半径',
+    lFreeText:'或用自己的语言描述',
+    phCity:'巴黎、上海、北京…',phNear:'埃菲尔铁塔、某广场…',
+    phFree:'例：本周六尼斯8人屋顶酒吧，热闹但不太吵',
+    typeVenue:'🏛 活动场地',typeNight:'🌃 夜生活',typeEvents:'🎉 活动与娱乐',typeExp:'🎯 体验与冒险',
+    sizeAny:'不限',sizeMe:'只有我',size2:'2人',size35:'3–5人',size615:'6–15人',
+    size2050:'20–50人',size50100:'50–100人',size100:'100人以上',
+    budgetAny:'不限',budgetFree:'🆓 免费/经济',budgetMid:'💛 中等',budgetUp:'🟠 高端',budgetLux:'🔴 奢华',
+    vibeAny:'不限',vibeRoof:'🌇 屋顶/户外',vibeBeach:'🏖 海滩/滨水',vibeLux:'✨ 奢华',
+    vibeCre:'🎨 创意/工业风',vibeInt:'🕯 私密/温馨',vibeLiv:'🎵 热闹/音乐',vibeCorp:'💼 商务',vibeHist:'🏛 历史',
+    whenAny:'任何时间',whenTonight:'今晚',whenWeekend:'本周末',whenWeek:'本周',
+    whenNext:'下周末',whenMonth:'下月',whenSpecific:'📆 具体日期…',
+    radAny:'不限距离',rad1:'1公里内',rad2:'2公里内',rad5:'5公里内',
+    rad10:'10公里内',rad25:'25公里内',rad50:'50公里内',
+  },
+  ar:{
+    signIn:'تسجيل الدخول', tgBot:'بوت تيليغرام', alsoTg:'أيضاً على تيليغرام', maybeLater:'ربما لاحقاً',
+    fTerms:'الشروط', fPrivacy:'الخصوصية', fTagline:'🐾 Pup Scout — هاكاثون OpenClaw كان 2026',
+    fPowered:'مدعوم من Anthropic + OpenClaw + Google Places',
+    heroTitle:'اعثر على المكان المثالي في ثوانٍ',
+    heroSub:'مساعد AI للبحث عن الأماكن والفعاليات.',
+    btnSearch:'🐾 بحث',
+    howTitle:'من الطلب إلى القائمة في ثوانٍ',
+    howSub:'الذكاء الاصطناعي يبحث عنك',
+    s1h:'صف',s1p:'المدينة والضيوف والميزانية',
+    s2h:'تحليل AI',s2p:'Claude يستخرج المتطلبات',
+    s3h:'بحث حقيقي',s3p:'Google Places يجد أماكن حقيقية',
+    s4h:'قائمة مختصرة',s4p:'3-5 أماكن مع الصور والميزانية',
+    lCity:'📍 المدينة',lType:'🎯 نوع البحث',lSize:'👥 حجم المجموعة',
+    lBudget:'💰 الميزانية',lVibe:'✨ الأجواء',lWhen:'📅 الوقت',lNear:'📌 بالقرب من (اختياري)',lRadius:'📡 النطاق',
+    lFreeText:'أو صف بكلماتك',
+    phCity:'باريس، دبي، الرياض…',phNear:'برج إيفل، وسط المدينة…',
+    phFree:'مثال: بار على السطح في نيس لـ8 أشخاص هذا السبت',
+    typeVenue:'🏛 قاعة فعاليات',typeNight:'🌃 سهرة',typeEvents:'🎉 فعاليات وأنشطة',typeExp:'🎯 تجارب ومغامرات',
+    sizeAny:'أي عدد',sizeMe:'أنا فقط',size2:'شخصان',size35:'3–5 أشخاص',size615:'6–15 شخصاً',
+    size2050:'20–50 شخصاً',size50100:'50–100 شخص',size100:'أكثر من 100',
+    budgetAny:'أي ميزانية',budgetFree:'🆓 مجاني / اقتصادي',budgetMid:'💛 متوسط',budgetUp:'🟠 راقٍ',budgetLux:'🔴 فاخر',
+    vibeAny:'أي أجواء',vibeRoof:'🌇 سطح / خارجي',vibeBeach:'🏖 شاطئ / واجهة بحرية',vibeLux:'✨ فاخر',
+    vibeCre:'🎨 إبداعي / صناعي',vibeInt:'🕯 حميمي / خاص',vibeLiv:'🎵 حيوي / موسيقى',vibeCorp:'💼 أعمال',vibeHist:'🏛 تاريخي',
+    whenAny:'أي وقت',whenTonight:'الليلة',whenWeekend:'هذا الأسبوع',whenWeek:'هذا الأسبوع',
+    whenNext:'نهاية الأسبوع القادم',whenMonth:'الشهر القادم',whenSpecific:'📆 تاريخ محدد…',
+    radAny:'أي مسافة',rad1:'ضمن 1 كم',rad2:'ضمن 2 كم',rad5:'ضمن 5 كم',
+    rad10:'ضمن 10 كم',rad25:'ضمن 25 كم',rad50:'ضمن 50 كم',
+  },
 };
 
 let lang = localStorage.getItem('lang') || 'en';
 
+function toggleLangMenu() {
+  document.getElementById('lang-picker').classList.toggle('open');
+}
+
 function setLang(l) {
   lang = l;
   localStorage.setItem('lang', l);
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.lang-btn').forEach(b => { if(b.title.toLowerCase().includes(l)||b.getAttribute('onclick').includes(`'${l}'`)) b.classList.add('active'); });
-  document.querySelectorAll('[data-t]').forEach(el => {
-    const key = el.getAttribute('data-t');
-    if(T[l] && T[l][key]) el.textContent = T[l][key];
+  const t = T[l] || T.en;
+  const meta = LANGS[l] || LANGS.en;
+
+  // Update picker trigger
+  document.getElementById('lang-flag').textContent = meta.flag;
+  document.getElementById('lang-label').textContent = meta.label;
+  document.querySelectorAll('.lang-option').forEach(o => {
+    o.classList.toggle('active', o.dataset.lang === l);
   });
+  document.getElementById('lang-picker').classList.remove('open');
+
+  // RTL
   document.documentElement.lang = l;
   document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+
+  // Hero
+  const heroT = document.querySelector('[data-t="heroTitle"]');
+  if (heroT) heroT.closest('h1').innerHTML = t.heroTitle;
+  const heroS = document.querySelector('[data-t="heroSub"]');
+  if (heroS) heroS.textContent = t.heroSub;
+
+  // Button
+  const btn = document.querySelector('.search-btn');
+  if (btn) btn.textContent = t.btnSearch;
+
+  // Form labels
+  const labels = {
+    'lbl-city': t.lCity, 'lbl-type': t.lType, 'lbl-size': t.lSize,
+    'lbl-budget': t.lBudget, 'lbl-vibe': t.lVibe, 'lbl-when': t.lWhen,
+    'lbl-near': t.lNear, 'lbl-radius': t.lRadius, 'lbl-free': t.lFreeText,
+  };
+  Object.entries(labels).forEach(([id, text]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  });
+
+  // Placeholders
+  const city = document.getElementById('f-city');
+  if (city) city.placeholder = t.phCity;
+  const near = document.getElementById('f-near');
+  if (near) near.placeholder = t.phNear;
+  const free = document.getElementById('t-query');
+  if (free) free.placeholder = t.phFree;
+
+  // Translate all data-tk elements (csel options, native selects, etc.)
+  document.querySelectorAll('[data-tk]').forEach(el => {
+    const key = el.getAttribute('data-tk');
+    if (t[key]) el.textContent = t[key];
+  });
+
+  // Update csel trigger labels to reflect current selection
+  document.querySelectorAll('.csel').forEach(wrap => {
+    const val = wrap.dataset.value;
+    const selected = wrap.querySelector(`.csel-option[data-value="${CSS.escape(val)}"]`);
+    if (selected) wrap.querySelector('.csel-label').textContent = selected.textContent;
+    else {
+      const first = wrap.querySelector('.csel-option');
+      if (first) wrap.querySelector('.csel-label').textContent = first.textContent;
+    }
+  });
+
+  // Nav
+  const signInBtn = document.getElementById('sign-in-btn');
+  if (signInBtn) signInBtn.innerHTML = signInBtn.innerHTML.replace(/Sign in|Войти|Connexion|登录|تسجيل الدخول/, t.signIn || 'Sign in');
+  document.querySelectorAll('[data-t]').forEach(el => {
+    const key = el.getAttribute('data-t');
+    if (t[key]) el.textContent = t[key];
+  });
+
+  // How it works
+  const howKeys = ['howTitle','howSub','s1h','s1p','s2h','s2p','s3h','s3p','s4h','s4p'];
+  howKeys.forEach(k => {
+    const el = document.querySelector(`[data-t="${k}"]`);
+    if (el && t[k]) el.textContent = t[k];
+  });
 }
 
-// ─── Mode & subtabs ──────────────────────────────────────────────────────────
-const modePlaceholders = {
-  venue: 'e.g. Rooftop event space in Cannes for 50 people, $5k budget, cocktail vibe',
-  nightout: 'e.g. Trendy cocktail bars in Paris for a group of 8, upscale but not stuffy',
-  events: 'e.g. Jazz concerts and art exhibitions in Berlin this weekend',
-};
-
-function setMode(m) {
-  currentMode = m;
-  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('mode-' + m).classList.add('active');
-  document.getElementById('t-query').placeholder = modePlaceholders[m];
+// ─── Custom Select (csel) engine ─────────────────────────────────────────────
+function cselToggle(id) {
+  const el = document.getElementById(id);
+  if (el.classList.contains('disabled')) return;
+  const isOpen = el.classList.contains('open');
+  // Close all others
+  document.querySelectorAll('.csel.open').forEach(c => c.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
 }
 
-function setSubTab(t) {
-  document.getElementById('input-form').style.display = t === 'form' ? 'block' : 'none';
-  document.getElementById('input-text').style.display = t === 'text' ? 'block' : 'none';
-  document.getElementById('subtab-form').classList.toggle('active', t === 'form');
-  document.getElementById('subtab-text').classList.toggle('active', t === 'text');
+function cselSelect(el, value, label) {
+  const wrap = el.closest('.csel');
+  wrap.dataset.value = value;
+  wrap.querySelector('.csel-label').textContent = label;
+  wrap.querySelectorAll('.csel-option').forEach(o => o.classList.toggle('selected', o.dataset.value === value));
+  wrap.classList.remove('open');
+  // Special: date picker for when
+  if (wrap.id === 'csel-when') toggleDatePicker(value);
+  // Special: near enabling
+  if (wrap.id === 'csel-radius') {} // handled separately
+}
+
+function cselValue(id) { return document.getElementById(id)?.dataset.value ?? ''; }
+
+// Init csel option clicks
+document.querySelectorAll('.csel-option').forEach(opt => {
+  opt.addEventListener('click', () => cselSelect(opt, opt.dataset.value, opt.textContent));
+});
+
+// Close csel on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.csel')) {
+    document.querySelectorAll('.csel.open').forEach(c => c.classList.remove('open'));
+  }
+});
+
+// ─── When / radius helpers ───────────────────────────────────────────────────
+function toggleDatePicker(val) {
+  const dp = document.getElementById('f-date-pick');
+  if (!dp) return;
+  dp.style.display = val === 'specific_date' ? 'block' : 'none';
+  if (val !== 'specific_date') dp.value = '';
+}
+
+// Enable Radius only when Near has input
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('f-near').addEventListener('input', () => {
+    const hasNear = document.getElementById('f-near').value.trim().length > 0;
+    const radEl = document.getElementById('csel-radius');
+    if (hasNear) { radEl.classList.remove('disabled'); }
+    else {
+      radEl.classList.add('disabled');
+      radEl.dataset.value = '';
+      const firstOpt = radEl.querySelector('.csel-option');
+      if (firstOpt) radEl.querySelector('.csel-label').textContent = firstOpt.textContent;
+      radEl.querySelectorAll('.csel-option').forEach((o, i) => o.classList.toggle('selected', i === 0));
+    }
+  });
+});
+
+// ─── Mode (kept for API compat) ───────────────────────────────────────────────
+function getModeFromType(typeVal) {
+  if (!typeVal) return 'venue';
+  if (typeVal.includes('night') || typeVal.includes('bars')) return 'nightout';
+  if (typeVal.includes('events') || typeVal.includes('concerts')) return 'events';
+  if (typeVal.includes('experience') || typeVal.includes('activity') || typeVal.includes('adventure')) return 'experiences';
+  return 'venue';
 }
 
 // ─── Search ──────────────────────────────────────────────────────────────────
-function doSearchForm() {
-  const city = document.getElementById('f-city').value.trim();
-  if (!city) { alert('Please enter a city'); return; }
-  const parts = [`venue in ${city}`];
-  const cap = document.getElementById('f-cap').value.trim();
-  const budget = document.getElementById('f-budget').value.trim();
-  const vibe = document.getElementById('f-vibe').value;
-  const date = document.getElementById('f-date').value;
-  if (cap) parts.push(`for ${cap}`);
-  if (budget) parts.push(`budget ${budget}`);
-  if (vibe) parts.push(`${vibe} vibe`);
-  if (date) parts.push(`on ${date}`);
+function doSearch() {
+  const city   = document.getElementById('f-city').value.trim();
+  const type   = cselValue('csel-type');
+  const size   = cselValue('csel-size');
+  const budget = cselValue('csel-budget');
+  const vibe   = cselValue('csel-vibe');
+  const whenSel = cselValue('csel-when');
+  const datePick = document.getElementById('f-date-pick').value;
+  const when = whenSel === 'specific_date' && datePick ? `on ${datePick}` : whenSel;
+  const radius = cselValue('csel-radius');
+  const near   = document.getElementById('f-near').value.trim();
+  const freeText = document.getElementById('t-query').value.trim();
+
+  // Free text overrides form if filled
+  if (freeText) {
+    const prefix = city ? `in ${city}: ` : '';
+    currentMode = getModeFromType(type);
+    runSearch(prefix + freeText);
+    return;
+  }
+
+  if (!city) { showToast('Please enter a city 📍', true); return; }
+
+  currentMode = getModeFromType(type);
+  const parts = [type, `in ${city}`];
+  if (size)   parts.push(size);
+  if (budget) parts.push(budget);
+  if (vibe)   parts.push(vibe);
+  if (when)   parts.push(when);
+  if (near && radius)  parts.push(`within ${radius} of ${near}`);
+  else if (near)       parts.push(`near ${near}`);
+  else if (radius)     parts.push(`within ${radius} of city center`);
   runSearch(parts.join(', '));
 }
 
-function doSearchText() {
-  const q = document.getElementById('t-query').value.trim();
-  if (!q) { alert('Please describe what you need'); return; }
-  runSearch(q);
-}
+// kept for keyboard handler compat
+function doSearchText() { doSearch(); }
+function doSearchForm()  { doSearch(); }
 
 async function runSearch(query) {
   const wrap = document.getElementById('results-wrap');
@@ -468,17 +984,28 @@ async function runSearch(query) {
     }
 
     document.getElementById('results-title').textContent = `${data.venues.length} places in ${data.location || 'your city'}`;
-    list.innerHTML = data.venues.map(v => venueCard(v)).join('');
+    list.innerHTML = data.venues.map((v, i) => venueCard(v, i)).join('');
+
+    // Async fetch booking links for venues with websites
+    data.venues.forEach((v, i) => {
+      if (v.website) fetchBookingLink(v.website, i, v);
+    });
+    // Save search date for availability checks
+    _lastSearchDate = data.date || '';
 
     if (data.truncated) {
       document.getElementById('truncate-banner').style.display = 'block';
     }
+    if (data.is_premium) currentIsPremium = true;
 
-    // Show map for first venue
-    if (data.venues[0] && data.venues[0].name) {
-      const q = encodeURIComponent(data.venues[0].name + ' ' + (data.location || ''));
-      document.getElementById('map-iframe').src = `https://www.google.com/maps/embed/v1/search?key=MAPS_KEY_PLACEHOLDER&q=${q}`;
+    // Show map with venue markers
+    const venuesWithCoords = data.venues.filter(v => v.lat && v.lng);
+    if (venuesWithCoords.length > 0) {
       document.getElementById('map-wrap').style.display = 'block';
+      renderMap(venuesWithCoords);
+    } else if (data.venues.length > 0) {
+      // No coords — show map wrap but note it
+      document.getElementById('map-wrap').style.display = 'none';
     }
   } catch(e) {
     list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px">Search failed. Please try again.</p>';
@@ -491,7 +1018,84 @@ function stars(rating) {
   return '★'.repeat(full) + '☆'.repeat(5-full) + ` <span style="color:var(--muted)">${rating}</span>`;
 }
 
-function venueCard(v) {
+async function fetchBookingLink(website, idx, venue) {
+  try {
+    const resp = await fetch(`${API}/api/venue/booking-link?website=${encodeURIComponent(website)}`);
+    const data = await resp.json();
+    if (data.found && data.url) {
+      const el = document.getElementById(`booking-link-${idx}`);
+      if (el) {
+        el.style.display = 'block';
+        const label = data.platform === 'Website' ? 'Book on Website' : `Book on ${data.platform}`;
+        el.innerHTML = `
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <a href="${data.url}" target="_blank" class="btn btn-sm btn-primary" style="display:inline-flex;gap:6px;text-decoration:none">
+              📅 ${label}
+            </a>
+            <button class="btn btn-sm" style="background:var(--s2);border:1px solid var(--border)"
+              onclick="checkAvailability(${idx}, '${data.url.replace(/'/g,"\\'")}', '${data.platform}')">
+              🔍 Check availability
+            </button>
+          </div>
+          <div id="avail-result-${idx}" style="margin-top:6px;font-size:.8rem"></div>`;
+      }
+    }
+  } catch(e) {}
+}
+
+async function checkAvailability(idx, url, platform) {
+  const el   = document.getElementById(`avail-result-${idx}`);
+  const date = document.getElementById('email-date')?.value || '';
+  const guests = document.getElementById('email-guests')?.value || '2';
+
+  if (el) el.innerHTML = '<span style="color:var(--muted)">⏳ Checking…</span>';
+
+  // Get date from search params or use tomorrow
+  const searchDate = _lastSearchDate || '';
+
+  try {
+    const params = new URLSearchParams({url, platform, guests});
+    if (searchDate) params.set('date', searchDate);
+
+    const resp = await fetch(`${API}/api/venue/availability?${params}`);
+    const data = await resp.json();
+
+    if (!el) return;
+    if (data.error && !data.slots?.length) {
+      el.innerHTML = `<span style="color:var(--muted)">Could not check — <a href="${url}" target="_blank" style="color:var(--accent)">open directly ↗</a></span>`;
+    } else if (data.available && data.slots?.length) {
+      const slotBtns = data.slots.map(s =>
+        `<span style="background:rgba(124,92,252,.15);color:var(--accent);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.8rem"
+          onclick="prefillTime('${s}')">${s}</span>`
+      ).join(' ');
+      el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+        <span style="color:#22c55e;margin-right:4px">✅ Available:</span> ${slotBtns}
+      </div>`;
+    } else {
+      el.innerHTML = `<span style="color:#f59e0b">😔 No slots found for this date — <a href="${url}" target="_blank" style="color:var(--accent)">check manually ↗</a></span>`;
+    }
+  } catch(e) {
+    if (el) el.innerHTML = `<span style="color:var(--muted)">Check failed — <a href="${url}" target="_blank" style="color:var(--accent)">open directly ↗</a></span>`;
+  }
+}
+
+function prefillTime(slot) {
+  // Prefill time in email modal if it's open
+  const timeEl = document.getElementById('email-time');
+  if (timeEl) { timeEl.value = slot; showToast(`Time set to ${slot}`); }
+}
+
+let _lastSearchDate = '';
+
+function focusMapMarker(idx) {
+  if (!leafletMap || !mapMarkers[idx]) return;
+  const marker = mapMarkers[idx];
+  leafletMap.setView(marker.getLatLng(), 15, { animate: true });
+  marker.openPopup();
+  document.getElementById('map-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function venueCard(v, i) {
   const photo = v.photos && v.photos[0]
     ? `<img class="venue-photo" src="${v.photos[0]}" alt="${v.name}" onerror="this.style.display='none'">`
     : `<div class="venue-photo-placeholder">🏛</div>`;
@@ -507,26 +1111,178 @@ function venueCard(v) {
         ${v.capacity ? `<span class="tag">👥 ${v.capacity}</span>` : ''}
         ${v.vibe ? `<span class="tag green">✨ ${v.vibe}</span>` : ''}
         ${v.budget ? `<span class="tag">💰 ${v.budget}</span>` : ''}
+        ${v.source === 'yelp' ? `<span class="tag" style="background:rgba(255,60,0,.1);color:#ff3c00;border-color:rgba(255,60,0,.2)">Yelp</span>` : ''}
+        ${v.categories ? `<span class="tag">${v.categories}</span>` : ''}
       </div>
+      <div id="booking-link-${i}" style="display:none;margin-bottom:8px"></div>
       ${v.why ? `<div class="venue-why">💡 ${v.why}</div>` : ''}
       <div class="venue-actions">
         ${v.website ? `<a href="${v.website}" target="_blank" class="btn btn-sm btn-secondary">🔗 Website</a>` : ''}
-        <a href="${mapsUrl}" target="_blank" class="btn btn-sm btn-secondary">🗺 Map</a>
-        <button class="btn btn-sm btn-outline" onclick="saveVenue(${JSON.stringify(v).replace(/"/g,'&quot;')})">♡ Save</button>
+        <a href="${mapsUrl}" target="_blank" class="btn btn-sm btn-secondary">🗺 Maps</a>
+        ${(v.lat && v.lng) ? `<button class="btn btn-sm btn-outline" onclick="focusMapMarker(${i})">📍 Show</button>` : ''}
+        <button class="btn btn-sm btn-outline" onclick="saveVenue(${JSON.stringify(v).replace(/"/g,'&quot;')},this)">♡ Save</button>
         <button class="btn btn-sm btn-outline" onclick="emailVenue(${JSON.stringify(v).replace(/"/g,'&quot;')})">📧 Email</button>
+        <button class="btn btn-sm btn-outline" style="opacity:.5;cursor:default" title="Coming soon">📞 Call <span style="font-size:.68rem;background:rgba(124,92,252,.2);color:#a78bfa;padding:1px 5px;border-radius:8px;margin-left:2px">soon</span></button>
       </div>
     </div>
   </div>`;
 }
 
+// ─── Map ─────────────────────────────────────────────────────────────────────
+function renderMap(venues) {
+  const container = document.getElementById('map-container');
+
+  // Destroy previous map instance
+  if (leafletMap) {
+    leafletMap.remove();
+    leafletMap = null;
+  }
+  mapMarkers = [];
+
+  // Init map centered on first venue
+  leafletMap = L.map('map-container', {
+    scrollWheelZoom: false,
+    zoomControl: true,
+  }).setView([venues[0].lat, venues[0].lng], 13);
+
+  // Dark tile layer (CartoDB dark)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(leafletMap);
+
+  const bounds = [];
+
+  venues.forEach((v, i) => {
+    const lat = parseFloat(v.lat);
+    const lng = parseFloat(v.lng);
+    if (!lat || !lng) return;
+
+    bounds.push([lat, lng]);
+
+    // Custom numbered icon
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="map-marker-num">${i + 1}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -16],
+    });
+
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.name + ' ' + v.address)}`;
+    const photoHtml = v.photos && v.photos[0]
+      ? `<img src="${v.photos[0]}" style="width:100%;height:120px;object-fit:cover;border-radius:6px;margin-bottom:8px;display:block" onerror="this.style.display='none'">`
+      : '';
+
+    const popup = `<div style="min-width:200px;max-width:260px">
+      ${photoHtml}
+      <div class="map-popup-name">${i + 1}. ${v.name}</div>
+      <div class="map-popup-addr">📍 ${v.address}</div>
+      <div class="map-popup-tags">
+        ${v.rating ? `<span class="map-popup-tag">⭐ ${v.rating}</span>` : ''}
+        ${v.price_level ? `<span class="map-popup-tag">${v.price_level}</span>` : ''}
+        ${v.vibe ? `<span class="map-popup-tag">✨ ${v.vibe}</span>` : ''}
+        ${v.capacity ? `<span class="map-popup-tag">👥 ${v.capacity}</span>` : ''}
+      </div>
+      ${v.budget ? `<div style="font-size:.78rem;color:#a78bfa;margin-bottom:4px">💰 ${v.budget}</div>` : ''}
+      <a href="${mapsUrl}" target="_blank" class="map-popup-link">🗺 Open in Google Maps →</a>
+    </div>`;
+
+    const marker = L.marker([lat, lng], { icon }).addTo(leafletMap);
+    marker.bindPopup(popup, { maxWidth: 280 });
+    mapMarkers.push(marker);
+
+    // Auto-open popup for first marker
+    if (i === 0) marker.openPopup();
+  });
+
+  // Fit map to all markers
+  if (bounds.length > 1) {
+    leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+  }
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
+let tgWidgetLoaded = false;
+let tgPromptLoaded = false;
+
+const LOGIN_PROMPT_STRINGS = {
+  save: {
+    en: ['Sign in to save', 'Your saved venues will be here whenever you need them.'],
+    ru: ['Войдите, чтобы сохранить', 'Сохранённые места будут доступны в любой момент.'],
+    fr: ['Connectez-vous pour sauvegarder', 'Vos lieux sauvegardés seront toujours disponibles.'],
+    zh: ['登录以保存', '您保存的场地随时可访问。'],
+    ar: ['سجّل الدخول للحفظ', 'ستكون الأماكن المحفوظة متاحة دائماً.'],
+  },
+  email: {
+    en: ['Sign in to send emails', 'Reach out to venues directly with AI-drafted emails.'],
+    ru: ['Войдите для отправки писем', 'Пишите в заведения напрямую с письмами от AI.'],
+    fr: ['Connectez-vous pour envoyer des emails', 'Contactez les lieux directement avec des emails rédigés par IA.'],
+    zh: ['登录以发送邮件', '通过AI撰写的邮件直接联系场地。'],
+    ar: ['سجّل الدخول لإرسال البريد', 'تواصل مع الأماكن مباشرة برسائل يكتبها AI.'],
+  },
+};
+
+function showLoginPrompt(reason = 'save') {
+  const strings = LOGIN_PROMPT_STRINGS[reason]?.[lang] || LOGIN_PROMPT_STRINGS[reason]?.en;
+  document.getElementById('login-prompt-title').textContent = strings[0];
+  document.getElementById('login-prompt-sub').textContent = strings[1];
+  document.getElementById('login-prompt-later').textContent = (T[lang] || T.en).maybeLater || 'Maybe later';
+
+  // Inject TG widget into prompt once
+  if (!tgPromptLoaded) {
+    tgPromptLoaded = true;
+    const s = document.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-widget.js?22';
+    s.setAttribute('data-telegram-login', 'pupeventscout_bot');
+    s.setAttribute('data-size', 'large');
+    s.setAttribute('data-onauth', 'onTelegramAuth(user)');
+    s.setAttribute('data-request-access', 'write');
+    s.setAttribute('data-radius', '8');
+    document.getElementById('login-prompt-tg-btn').appendChild(s);
+  }
+
+  document.getElementById('login-prompt-modal').classList.add('open');
+}
+
 function showTelegramLogin() {
   const w = document.getElementById('tg-widget-wrap');
-  w.style.display = w.style.display === 'none' ? 'block' : 'none';
+  const isVisible = w.style.visibility === 'visible';
+
+  if (isVisible) {
+    // Hide
+    w.style.visibility = 'hidden';
+    w.style.opacity = '0';
+    w.style.pointerEvents = 'none';
+    return;
+  }
+
+  // Inject widget script once
+  if (!tgWidgetLoaded) {
+    tgWidgetLoaded = true;
+    const container = document.getElementById('tg-btn-container');
+    const s = document.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-widget.js?22';
+    s.setAttribute('data-telegram-login', 'pupeventscout_bot');
+    s.setAttribute('data-size', 'medium');
+    s.setAttribute('data-onauth', 'onTelegramAuth(user)');
+    s.setAttribute('data-request-access', 'write');
+    container.appendChild(s);
+  }
+
+  // Show
+  w.style.visibility = 'visible';
+  w.style.opacity = '1';
+  w.style.pointerEvents = 'auto';
 }
 
 async function onTelegramAuth(user) {
-  document.getElementById('tg-widget-wrap').style.display = 'none';
+  const w = document.getElementById('tg-widget-wrap');
+  w.style.visibility = 'hidden';
+  w.style.opacity = '0';
+  w.style.pointerEvents = 'none';
+  closeModal('login-prompt-modal');
   try {
     const resp = await fetch(API + '/api/auth/telegram', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(user)});
     const data = await resp.json();
@@ -536,10 +1292,12 @@ async function onTelegramAuth(user) {
 
 function setUser(user) {
   currentUser = user;
+  currentIsPremium = user.is_premium || user.tier === 'premium';
   localStorage.setItem('pup_user', JSON.stringify(user));
   document.getElementById('sign-in-btn').style.display = 'none';
   document.getElementById('user-btn-wrap').style.display = 'block';
-  document.getElementById('user-name').textContent = user.first_name || user.username || 'Me';
+  const label = (user.first_name || user.username || 'Me') + (currentIsPremium ? ' ⚡' : '');
+  document.getElementById('user-name').textContent = label;
   if (user.photo_url) document.getElementById('user-photo').src = user.photo_url;
   else document.getElementById('user-photo').style.display = 'none';
 }
@@ -578,16 +1336,21 @@ async function openPanel(type) {
 
     if (type === 'searches') {
       content.innerHTML = items.map(s => `
-        <div class="search-item" onclick="runSearch('${s.query.replace(/'/g,"\\'")}');closePanel()">
-          <div style="font-weight:600">${s.query}</div>
-          <div style="color:var(--muted);font-size:.78rem">${s.location || ''} · ${new Date(s.created_at).toLocaleDateString()}</div>
+        <div class="search-item" data-query="${s.query.replace(/"/g,'&quot;')}" onclick="rerunSearch(this.dataset.query)" style="cursor:pointer">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="font-weight:600;font-size:.88rem;line-height:1.4;flex:1">${s.query}</div>
+            <span style="color:var(--accent);font-size:.9rem;flex-shrink:0;margin-top:2px">↻</span>
+          </div>
+          <div style="color:var(--muted);font-size:.78rem;margin-top:4px">${s.location || ''} · ${new Date(s.created_at).toLocaleDateString()}</div>
         </div>`).join('');
     } else {
       content.innerHTML = items.map(s => `
-        <div class="search-item">
-          <div style="font-weight:600">${s.name}</div>
-          <div style="color:var(--muted);font-size:.78rem">${s.address || ''}</div>
-          ${s.website ? `<a href="${s.website}" target="_blank" style="font-size:.78rem">🔗 Visit</a>` : ''}
+        <div class="search-item" onclick="openVenueDetail(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="font-weight:600;font-size:.88rem;line-height:1.3;flex:1">${s.name}</div>
+            <span style="color:var(--accent);font-size:.85rem;flex-shrink:0;margin-top:2px">›</span>
+          </div>
+          <div style="color:var(--muted);font-size:.78rem;margin-top:4px">${s.address || ''}</div>
         </div>`).join('');
     }
   } catch(e) { content.innerHTML = '<p style="color:var(--muted)">Failed to load.</p>'; }
@@ -598,48 +1361,387 @@ function closePanel() {
   document.getElementById('side-panel').classList.remove('open');
 }
 
+// ─── Venue Detail Modal ───────────────────────────────────────────────────────
+let vdPhotoIdx = 0;
+let vdPhotos = [];
+
+async function openVenueDetail(saved) {
+  // Reset
+  vdPhotoIdx = 0; vdPhotos = [];
+  document.getElementById('vd-photo-strip').innerHTML = '<div style="width:100%;height:100%;background:linear-gradient(135deg,var(--s1),var(--s2));display:flex;align-items:center;justify-content:center;font-size:3rem">🏛</div>';
+  document.getElementById('vd-photo-dots').innerHTML = '';
+  document.getElementById('vd-name').textContent = saved.name || '';
+  document.getElementById('vd-address').textContent = saved.address ? '📍 ' + saved.address : '';
+  document.getElementById('vd-tags').innerHTML = '';
+  document.getElementById('vd-hours').style.display = 'none';
+  document.getElementById('vd-actions').innerHTML = '';
+  document.getElementById('venue-detail-modal').classList.add('open');
+
+  // Fetch full details if we have place_id
+  let detail = saved;
+  if (saved.place_id) {
+    try {
+      const r = await fetch(`${API}/api/venue/detail?place_id=${encodeURIComponent(saved.place_id)}`);
+      const d = await r.json();
+      if (d.name) detail = {...saved, ...d};
+    } catch(e) {}
+  }
+
+  // Photos slider
+  vdPhotos = detail.photos || [];
+  if (vdPhotos.length) {
+    const strip = document.getElementById('vd-photo-strip');
+    strip.innerHTML = vdPhotos.map(url =>
+      `<img src="${url}" style="min-width:100%;height:200px;object-fit:cover;display:block" onerror="this.style.display='none'">`
+    ).join('');
+    if (vdPhotos.length > 1) {
+      const dots = document.getElementById('vd-photo-dots');
+      dots.innerHTML = vdPhotos.map((_, i) =>
+        `<div onclick="vdGoTo(${i})" style="width:7px;height:7px;border-radius:50%;background:${i===0?'#fff':'rgba(255,255,255,.4)'};cursor:pointer;transition:background .2s" id="vd-dot-${i}"></div>`
+      ).join('');
+      // Swipe support
+      let startX = 0;
+      strip.addEventListener('touchstart', e => startX = e.touches[0].clientX, {passive:true});
+      strip.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - startX;
+        if (dx < -40) vdGoTo(Math.min(vdPhotoIdx+1, vdPhotos.length-1));
+        else if (dx > 40) vdGoTo(Math.max(vdPhotoIdx-1, 0));
+      });
+    }
+  }
+
+  // Tags
+  const tags = document.getElementById('vd-tags');
+  if (detail.rating) tags.innerHTML += `<span class="tag">${stars(detail.rating)}</span>`;
+  if (detail.price_level) tags.innerHTML += `<span class="tag">${detail.price_level}</span>`;
+  if (detail.phone) tags.innerHTML += `<span class="tag">📞 ${detail.phone}</span>`;
+
+  // Hours
+  if (detail.hours && detail.hours.length) {
+    document.getElementById('vd-hours').style.display = 'block';
+    document.getElementById('vd-hours-list').innerHTML = detail.hours.map(h => `<div style="margin-bottom:2px">${h}</div>`).join('');
+  }
+
+  // Actions
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((detail.name||'') + ' ' + (detail.address||''))}`;
+  let actions = `<a href="${mapsUrl}" target="_blank" class="btn btn-sm btn-secondary">🗺 Maps</a>`;
+  if (detail.website) actions += `<a href="${detail.website}" target="_blank" class="btn btn-sm btn-secondary">🔗 Website</a>`;
+  actions += `<button class="btn btn-sm btn-outline" onclick="emailVenue(${JSON.stringify(detail).replace(/"/g,'&quot;')});closeModal('venue-detail-modal')">📧 Email</button>`;
+  document.getElementById('vd-actions').innerHTML = actions;
+}
+
+function vdGoTo(idx) {
+  vdPhotoIdx = idx;
+  document.getElementById('vd-photo-strip').style.transform = `translateX(-${idx * 100}%)`;
+  document.querySelectorAll('[id^=vd-dot-]').forEach((d, i) => {
+    d.style.background = i === idx ? '#fff' : 'rgba(255,255,255,.4)';
+  });
+}
+
+function rerunSearch(query) {
+  closePanel();
+  // Put query into free-text field so user sees what was searched
+  document.getElementById('t-query').value = query;
+  // Scroll to top smoothly then run
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  setTimeout(() => runSearch(query), 300);
+}
+
 // ─── Modals ──────────────────────────────────────────────────────────────────
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-async function emailVenue(venue) {
-  if (!currentUser) { showTelegramLogin(); return; }
-  // TODO: check premium tier
+let _emailVenue = null;
+let _emailMode = 'draft'; // 'draft' | 'send'
+
+function setEmailMode(mode) {
+  _emailMode = mode;
+  const draftBtn = document.getElementById('email-mode-draft');
+  const sendBtn  = document.getElementById('email-mode-send');
+  const ccGroup  = document.getElementById('email-cc-group');
+  const genBtn   = document.getElementById('email-generate-btn');
+
+  if (mode === 'draft') {
+    draftBtn.className = 'btn btn-secondary';
+    draftBtn.style.cssText = 'flex:1;justify-content:center;height:38px;font-size:.85rem;border-color:var(--accent);color:var(--text)';
+    sendBtn.className = 'btn btn-outline';
+    sendBtn.style.cssText = 'flex:1;justify-content:center;height:38px;font-size:.85rem';
+    ccGroup.style.display = 'none';
+    genBtn.textContent = '✉️ Generate draft';
+  } else {
+    sendBtn.className = 'btn btn-primary';
+    sendBtn.style.cssText = 'flex:1;justify-content:center;height:38px;font-size:.85rem';
+    draftBtn.className = 'btn btn-outline';
+    draftBtn.style.cssText = 'flex:1;justify-content:center;height:38px;font-size:.85rem';
+    ccGroup.style.display = 'block';
+    genBtn.textContent = '📤 Send for me';
+  }
+}
+
+function emailVenue(venue) {
+  if (!currentUser) { showLoginPrompt('email'); return; }
+  _emailVenue = venue;
+
+  // Pre-fill from form if available
+  const cityVal = document.getElementById('f-city')?.value || '';
+  const sizeVal = cselValue('csel-size') || '';
+  const budgetVal = cselValue('csel-budget') || '';
+  const whenVal = (() => {
+    const w = cselValue('csel-when');
+    if (w === 'specific_date') return document.getElementById('f-date-pick')?.value || '';
+    return w || '';
+  })();
+
+  if (sizeVal) document.getElementById('email-guests').value = sizeVal;
+  if (whenVal) document.getElementById('email-date').value = whenVal;
+  document.getElementById('email-time').value = '';
+  document.getElementById('email-notes').value = '';
+
+  document.getElementById('email-venue-name-line').textContent = `To: ${venue.name}${venue.address ? ' · ' + venue.address : ''}`;
+  document.getElementById('email-modal-title').textContent = '📧 Email Venue';
+  _emailMode = 'draft';
+  setEmailMode('draft');
+
+  // Show step 1
+  showEmailDetails();
   document.getElementById('email-modal').classList.add('open');
-  const body = document.getElementById('email-modal-body');
-  body.innerHTML = '<div class="spinner"></div>';
+
+  // Register csel option clicks for email occasion
+  document.querySelectorAll('#csel-email-occasion .csel-option').forEach(opt => {
+    opt.onclick = () => cselSelect(opt, opt.dataset.value, opt.textContent);
+  });
+}
+
+function showEmailDetails() {
+  document.getElementById('email-step-details').style.display = 'block';
+  document.getElementById('email-step-draft').style.display = 'none';
+}
+
+async function generateEmail() {
+  if (!_emailVenue) return;
+  const btn = document.getElementById('email-generate-btn');
+  const isSendMode = _emailMode === 'send';
+  btn.textContent = isSendMode ? '📤 Working…' : '✉️ Generating…';
+  btn.disabled = true;
+
+  const occasion  = cselValue('csel-email-occasion');
+  const guests    = document.getElementById('email-guests').value.trim();
+  const date      = document.getElementById('email-date').value.trim();
+  const time      = document.getElementById('email-time').value.trim();
+  const notes     = document.getElementById('email-notes').value.trim();
+  const cc        = document.getElementById('email-cc').value.trim();
+  const freeQuery = document.getElementById('t-query')?.value || '';
+
   try {
     const resp = await fetch(API + '/api/email/generate', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({venue, telegram_id: currentUser.id, query: document.getElementById('t-query')?.value || ''})
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        venue: _emailVenue,
+        telegram_id: currentUser?.id,
+        occasion, guests, date, time, notes,
+        query: freeQuery,
+        send_mode: isSendMode,
+        cc_email: cc || null,
+      })
     });
     const data = await resp.json();
-    body.innerHTML = `
-      <p style="color:var(--muted);font-size:.82rem;margin-bottom:8px">Subject: <strong>${data.subject}</strong></p>
-      <textarea id="email-body-text">${data.body}</textarea>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button class="btn btn-primary" onclick="copyEmail()">📋 Copy Email</button>
-        <button class="btn btn-secondary" onclick="closeModal('email-modal')">Close</button>
-      </div>`;
+
+    document.getElementById('email-subject-input').value = data.subject;
+    document.getElementById('email-body-text').value = data.body;
+    document.getElementById('email-to').value = '';
+    document.getElementById('email-to-hint').textContent = '🔍 Looking for email…';
+    document.getElementById('email-step-details').style.display = 'none';
+    document.getElementById('email-step-draft').style.display = 'block';
+
+    // Update Send button label — always show draft first, user reviews then clicks send
+    const sendBtn = document.getElementById('btn-send-email');
+    sendBtn.textContent = isSendMode ? '📤 Send for me' : '📤 Send';
+
+    // Look up email — no auto-send, user reviews the draft first
+    findVenueEmail(_emailVenue?.website || '');
+
   } catch(e) {
-    body.innerHTML = '<p style="color:var(--muted)">Failed to generate email. Please try again.</p>';
+    showToast('Failed to generate email. Try again.', true);
+  } finally {
+    btn.textContent = isSendMode ? '📤 Send for me' : '✉️ Generate draft';
+    btn.disabled = false;
   }
 }
 
 function copyEmail() {
   const t = document.getElementById('email-body-text');
-  t.select(); document.execCommand('copy');
-  alert('Email copied to clipboard!');
+  t.select();
+  try { document.execCommand('copy'); } catch(e) { navigator.clipboard?.writeText(t.value); }
+  showToast('📋 Copied to clipboard!');
 }
 
-async function saveVenue(venue) {
-  if (!currentUser) { showTelegramLogin(); return; }
+async function sendEmail() {
+  const to      = document.getElementById('email-to').value.trim();
+  const subject = document.getElementById('email-subject-input').value.trim();
+  const body    = document.getElementById('email-body-text').value.trim();
+
+  if (!to) { showToast('Enter recipient email in the To field', true); return; }
+
+  const btn = document.getElementById('btn-send-email');
+  const isSend = _emailMode === 'send';
+  btn.textContent = '📤 Sending…';
+  btn.disabled = true;
+
+  const cc = isSend ? (document.getElementById('email-cc')?.value?.trim() || '') : '';
+
+  try {
+    const resp = await fetch(API + '/api/email/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        venue: _emailVenue,
+        telegram_id: currentUser?.id,
+        occasion:  cselValue('csel-email-occasion'),
+        guests:    document.getElementById('email-guests').value,
+        date:      document.getElementById('email-date').value,
+        time:      document.getElementById('email-time').value,
+        notes:     document.getElementById('email-notes').value,
+        recipient_email: to,
+        send_mode: isSend,
+        cc_email: cc || null,
+        _subject_override: subject,
+        _body_override: body,
+      })
+    });
+    const data = await resp.json();
+    if (data.sent) {
+      btn.textContent = '✅ Sent!';
+      btn.style.background = '#22c55e';
+      showToast(isSend ? '✅ Sent! Venue replies will appear in your Telegram.' : '✅ Email sent!');
+      setTimeout(() => closeModal('email-modal'), 2000);
+    } else {
+      showToast(data.send_error || 'Send failed — check the address', true);
+      btn.textContent = isSend ? '📤 Send for me' : '📤 Send';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    showToast('Send failed. Try copying instead.', true);
+    btn.textContent = isSend ? '📤 Send for me' : '📤 Send';
+    btn.disabled = false;
+  }
+}
+
+async function findVenueEmail(website, autoSend = false, subject = '', body = '', cc = '') {
+  const hintEl = document.getElementById('email-to-hint');
+  const toEl   = document.getElementById('email-to');
+  if (!website) {
+    hintEl.textContent = autoSend ? 'Enter venue email manually then click Send' : 'Enter email manually';
+    hintEl.style.cursor = 'default';
+    return;
+  }
+  try {
+    const resp = await fetch(`${API}/api/venue/find-email?website=${encodeURIComponent(website)}`);
+    const data = await resp.json();
+    if (data.emails && data.emails.length > 0) {
+      const primary = data.emails[0];
+      if (!toEl.value.trim()) toEl.value = primary;
+      if (data.emails.length === 1) {
+        hintEl.textContent = '✅ Found';
+        hintEl.style.cssText = 'font-size:.72rem;color:#22c55e;white-space:nowrap;cursor:default';
+      } else {
+        hintEl.innerHTML = `<span style="color:#22c55e;cursor:pointer" onclick="showEmailOptions(${JSON.stringify(data.emails).replace(/"/g,'&quot;')})">✅ ${data.emails.length} found ▾</span>`;
+      }
+      // Auto-send mode: trigger send immediately
+      if (autoSend) {
+        await autoSendEmail(primary, subject, body, cc);
+      }
+    } else {
+      const domain = website.replace(/https?:\/\/(www\.)?/,'').split('/')[0];
+      hintEl.textContent = domain ? `Try info@${domain}` : 'Not found — enter manually';
+      hintEl.style.cssText = 'font-size:.72rem;color:var(--muted);white-space:nowrap;cursor:default';
+      if (autoSend) showToast("Couldn't find venue email — enter it manually and click Send", true);
+    }
+  } catch(e) {
+    hintEl.textContent = 'Enter manually';
+    hintEl.style.cssText = 'font-size:.72rem;color:var(--muted);white-space:nowrap;cursor:default';
+  }
+}
+
+async function autoSendEmail(to, subject, body, cc) {
+  const btn = document.getElementById('btn-send-email');
+  if (btn) { btn.textContent = '📤 Sending…'; btn.disabled = true; }
+  try {
+    const resp = await fetch(API + '/api/email/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        venue: _emailVenue,
+        telegram_id: currentUser?.id,
+        send_mode: true,
+        cc_email: cc || null,
+        _subject_override: subject,
+        _body_override: body,
+        recipient_email: to,
+      })
+    });
+    const data = await resp.json();
+    if (data.sent) {
+      if (btn) { btn.textContent = '✅ Sent!'; btn.style.background = '#22c55e'; }
+      showToast('✅ Email sent! The venue\'s reply will be forwarded to you in Telegram.');
+      setTimeout(() => closeModal('email-modal'), 2500);
+    } else {
+      if (btn) { btn.textContent = '📤 Send'; btn.disabled = false; }
+      showToast(data.send_error || 'Send failed — check email address', true);
+    }
+  } catch(e) {
+    if (btn) { btn.textContent = '📤 Send'; btn.disabled = false; }
+    showToast('Send failed. Try manually.', true);
+  }
+}
+
+function showEmailOptions(emails) {
+  const toEl = document.getElementById('email-to');
+  // Simple inline picker — replace hint with select-like list
+  const hintEl = document.getElementById('email-to-hint');
+  const opts = emails.map(e =>
+    `<div onclick="document.getElementById('email-to').value='${e}';this.parentElement.remove()" style="padding:5px 10px;cursor:pointer;font-size:.8rem;background:var(--s2);border-bottom:1px solid var(--border)" onmouseenter="this.style.background='var(--s1)'" onmouseleave="this.style.background='var(--s2)'">${e}</div>`
+  ).join('');
+  const drop = document.createElement('div');
+  drop.style.cssText = 'position:absolute;right:0;top:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;overflow:hidden;z-index:600;min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+  drop.innerHTML = opts;
+  hintEl.style.position = 'relative';
+  hintEl.appendChild(drop);
+  setTimeout(() => document.addEventListener('click', () => drop.remove(), {once:true}), 100);
+}
+
+function copyFullEmail() {
+  const to      = document.getElementById('email-to').value.trim();
+  const subject = document.getElementById('email-subject-input').value.trim();
+  const body    = document.getElementById('email-body-text').value.trim();
+  const full = [
+    to      ? `To: ${to}`       : '',
+    subject ? `Subject: ${subject}` : '',
+    '',
+    body,
+  ].filter((l, i) => l || i === 2).join('\n');
+  try { navigator.clipboard.writeText(full); } catch(e) {
+    const t = document.getElementById('email-body-text');
+    t.select(); document.execCommand('copy');
+  }
+  showToast('📋 Full email copied!');
+}
+
+async function saveVenue(venue, btn) {
+  if (!currentUser) { showLoginPrompt('save'); return; }
+  if (btn && btn.dataset.saved) return; // already saved
   try {
     await fetch(API + '/api/user/save-venue', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({...venue, telegram_id: currentUser.id, search_id: lastSearchId})
     });
-    alert('Venue saved! ♡');
-  } catch(e) { alert('Failed to save. Please try again.'); }
+    if (btn) {
+      btn.innerHTML = '♥ Saved';
+      btn.style.color = '#ef4444';
+      btn.style.borderColor = 'rgba(239,68,68,.4)';
+      btn.dataset.saved = '1';
+    }
+    showToast('Saved! ♥');
+  } catch(e) { showToast('Failed to save. Try again.', true); }
 }
 
 function openUpgradeModal() {
@@ -653,12 +1755,11 @@ function initTonConnect() {
   if (tonConnectUI) return;
   try {
     tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
-      manifestUrl: 'https://pupeventscout.duckdns.org/tonconnect-manifest.json',
+      manifestUrl: 'https://pupscout.co.uk/tonconnect-manifest.json',
       buttonRootId: 'ton-connect-button'
     });
-    tonConnectUI.onStatusChange(wallet => {
+    tonConnectUI.onStatusChange(async wallet => {
       if (wallet) {
-        // Wallet connected — TODO: trigger payment flow
         console.log('Wallet connected:', wallet.account.address);
       }
     });
@@ -667,18 +1768,163 @@ function initTonConnect() {
   }
 }
 
+async function payWithTon(paymentType) {
+  if (!currentUser) { showTelegramLogin(); return; }
+  if (!tonConnectUI) { initTonConnect(); return; }
+
+  // Get pricing
+  const pricingResp = await fetch(API + '/api/pricing');
+  const pricing = await pricingResp.json();
+  const amountTon = pricing[paymentType];
+  const walletAddr = pricing.ton_wallet;
+  if (!amountTon) return;
+
+  const amountNano = BigInt(Math.round(amountTon * 1e9)).toString();
+
+  try {
+    const result = await tonConnectUI.sendTransaction({
+      validUntil: Math.floor(Date.now() / 1000) + 300,
+      messages: [{
+        address: walletAddr,
+        amount: amountNano,
+        payload: btoa(`pup_scout:${paymentType}:${currentUser.id}`),
+      }]
+    });
+
+    // Verify on backend
+    const txHash = result.boc; // TON Connect returns boc; we send it for verification
+    const verifyResp = await fetch(API + '/api/payment/verify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tx_hash: txHash, type: paymentType, telegram_id: currentUser.id })
+    });
+    const verifyData = await verifyResp.json();
+    if (verifyData.ok) {
+      if (verifyData.user) setUser(verifyData.user);
+      closeModal('upgrade-modal');
+      showToast('⚡ Premium activated! Enjoy unlimited results.');
+    } else {
+      showToast('Payment received — verification pending. Try again in a moment.', true);
+    }
+  } catch(e) {
+    if (!e.message?.includes('User rejects')) {
+      showToast('Transaction failed. Please try again.', true);
+    }
+  }
+}
+
+function showToast(msg, isError = false) {
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:${isError?'#ef4444':'var(--accent)'};color:#fff;padding:12px 20px;border-radius:10px;font-size:.88rem;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:90vw;text-align:center`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// ─── Generic autocomplete factory ────────────────────────────────────────────
+function makeAutocomplete(inputId, dropdownId, types = '(cities)', cityGetter = null) {
+  const input    = document.getElementById(inputId);
+  const dropdown = document.getElementById(dropdownId);
+  if (!input || !dropdown) return;
+
+  let debounceTimer = null;
+  let focusedIdx = -1;
+  let items = [];
+
+  function renderItems(results) {
+    items = results; focusedIdx = -1;
+    if (!results.length) { closeDropdown(); return; }
+    dropdown.innerHTML = results.map((r, i) =>
+      `<div class="ac-item" data-idx="${i}">
+        <span class="ac-icon">${types === '(cities)' ? '📍' : '📌'}</span>
+        <span class="ac-label">${r.label}</span>
+      </div>`
+    ).join('');
+    dropdown.classList.add('open');
+    dropdown.querySelectorAll('.ac-item').forEach(el => {
+      el.addEventListener('mousedown', e => { e.preventDefault(); selectItem(parseInt(el.dataset.idx)); });
+    });
+  }
+  function selectItem(idx) { if (items[idx]) { input.value = items[idx].label; closeDropdown(); } }
+  function closeDropdown() { dropdown.classList.remove('open'); dropdown.innerHTML = ''; focusedIdx = -1; }
+  function setFocus(idx) {
+    const els = dropdown.querySelectorAll('.ac-item');
+    els.forEach(e => e.classList.remove('focused'));
+    if (idx >= 0 && idx < els.length) { els[idx].classList.add('focused'); focusedIdx = idx; }
+  }
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const q = input.value.trim();
+    if (q.length < 2) { closeDropdown(); return; }
+    debounceTimer = setTimeout(async () => {
+      try {
+        const city = cityGetter ? cityGetter() : '';
+        const url = `${API}/api/autocomplete/cities?q=${encodeURIComponent(q)}&types=${encodeURIComponent(types)}${city ? '&city=' + encodeURIComponent(city) : ''}`;
+        const data = await (await fetch(url)).json();
+        renderItems(data);
+      } catch(e) { closeDropdown(); }
+    }, 200);
+  });
+  input.addEventListener('keydown', e => {
+    const els = dropdown.querySelectorAll('.ac-item');
+    if (!els.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setFocus(Math.min(focusedIdx+1, els.length-1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setFocus(Math.max(focusedIdx-1, 0)); }
+    else if (e.key === 'Enter' && focusedIdx >= 0) { e.preventDefault(); e.stopPropagation(); selectItem(focusedIdx); }
+    else if (e.key === 'Escape') closeDropdown();
+  });
+  input.addEventListener('blur', () => setTimeout(closeDropdown, 150));
+  document.addEventListener('click', e => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) closeDropdown();
+  });
+}
+
+// ─── Init autocomplete fields ─────────────────────────────────────────────────
+makeAutocomplete('f-city', 'city-dropdown', '(cities)');
+makeAutocomplete('f-near', 'near-dropdown', 'establishment', () => document.getElementById('f-city').value.trim());
+
+// City → enable/disable Near; Near → enable/disable Radius
+(function() {
+  const cityInput = document.getElementById('f-city');
+  const nearInput = document.getElementById('f-near');
+
+  function syncNear() {
+    const hasCity = cityInput.value.trim().length > 0;
+    nearInput.disabled = !hasCity;
+    if (!hasCity) {
+      nearInput.value = '';
+      // Also reset radius
+      const radEl = document.getElementById('csel-radius');
+      radEl.classList.add('disabled');
+      radEl.dataset.value = '';
+      const first = radEl.querySelector('.csel-option');
+      if (first) radEl.querySelector('.csel-label').textContent = first.textContent;
+      radEl.querySelectorAll('.csel-option').forEach((o, i) => o.classList.toggle('selected', i === 0));
+    }
+  }
+  cityInput.addEventListener('input', syncNear);
+  cityInput.addEventListener('change', syncNear);
+})();
+
 // ─── Init ────────────────────────────────────────────────────────────────────
 document.addEventListener('click', e => {
   if (!document.getElementById('auth-area').contains(e.target)) {
     document.getElementById('user-dropdown').classList.remove('open');
-    document.getElementById('tg-widget-wrap').style.display = 'none';
+    const w = document.getElementById('tg-widget-wrap');
+    w.style.visibility = 'hidden';
+    w.style.opacity = '0';
+    w.style.pointerEvents = 'none';
+  }
+  if (!document.getElementById('lang-picker').contains(e.target)) {
+    document.getElementById('lang-picker').classList.remove('open');
   }
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    if (document.getElementById('input-form').style.display !== 'none') doSearchForm();
-    else if (!e.shiftKey && document.activeElement.id === 't-query') { e.preventDefault(); doSearchText(); }
+  if (e.key === 'Enter' && !e.shiftKey && document.activeElement.id !== 't-query') {
+    doSearch();
+  } else if (e.key === 'Enter' && !e.shiftKey && document.activeElement.id === 't-query') {
+    e.preventDefault(); doSearch();
   }
   if (e.key === 'Escape') {
     closePanel();

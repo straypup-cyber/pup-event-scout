@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Pup Event Scout - Telegram Bot
-AI-powered venue finder for events
+Pup Scout - Telegram Bot
+Personal booking assistant: email comms, saved venues, subscription, bookings calendar
 """
 
 import os
-import re
-import json
 import logging
 import requests
 from dotenv import load_dotenv
-import anthropic
-from telegram import Update, InputMediaPhoto
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes
+)
 from telegram.constants import ParseMode
 
 load_dotenv()
@@ -23,361 +23,696 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
+API_BASE         = "https://pupscout.co.uk/api"
+SUPABASE_URL     = os.getenv("SUPABASE_URL", "https://ponhyojwucvukkphqfqz.supabase.co")
+SUPABASE_KEY     = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+try:
+    from supabase import create_client as _sb_create
+    supabase = _sb_create(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_KEY else None
+except Exception:
+    supabase = None
 
-WELCOME_MESSAGE = """🐾 *Woof! Welcome to Pup Event Scout!*
+# ─── Helpers ─────────────────────────────────────────────────────────────────
 
-I'm your AI-powered venue finder. Tell me what kind of event you're planning and I'll sniff out the perfect spots!
+import asyncio
 
-Just describe your needs in plain English:
-• _"Find a venue in Cannes for 50 people, $5k budget, rooftop vibe"_
-• _"Beachfront conference space in Nice, 100 attendees, elegant"_
-• _"Intimate cocktail bar in Paris for 30 people, creative atmosphere"_
+async def _send_confirmation_email(email_id: str, tg_user) -> tuple[bool, str]:
+    """Fetch original email context and send a thank-you reply via API."""
+    import aiohttp
+    resend_key = os.getenv("RESEND_FULL_KEY") or os.getenv("RESEND_API_KEY", "")
+    if not resend_key:
+        return False, "No Resend key"
 
-I'll search real venues and send each one with photos. 🎯
+    sender_name = ""
+    if tg_user:
+        parts = [tg_user.first_name or "", tg_user.last_name or ""]
+        sender_name = " ".join(p for p in parts if p).strip()
 
-Type /help for more info, or just tell me what you need!"""
-
-HELP_MESSAGE = """🐾 *Pup Event Scout - Help*
-
-*How to use:*
-Send me a message describing your event needs:
-• 📍 *City/Location* - Where?
-• 👥 *Capacity* - How many people?
-• 💰 *Budget* - Budget range?
-• 🎨 *Vibe/Theme* - What atmosphere?
-
-*Examples:*
-• "Venue in Cannes for 50 people, $5k, rooftop"
-• "Conference center in London for 200 people, professional"
-• "Luxury beachfront event space in Monaco, 80 guests"
-
-*Powered by:* OpenClaw + Anthropic Claude + Google Places"""
-
-
-def get_place_photos(place_id: str, max_photos: int = 3) -> list[str]:
-    """Get photo URLs for a place from Google Places."""
-    if not GOOGLE_PLACES_API_KEY or not place_id:
-        return []
-
-    photo_urls = []
     try:
-        det_url = "https://maps.googleapis.com/maps/api/place/details/json"
-        det_params = {
-            "place_id": place_id,
-            "fields": "photos",
-            "key": GOOGLE_PLACES_API_KEY,
-        }
-        resp = requests.get(det_url, params=det_params, timeout=10)
-        photos = resp.json().get("result", {}).get("photos", [])
+        # Fetch original inbound email to get from address, subject, language context
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.resend.com/emails/receiving/{email_id}",
+                headers={"Authorization": f"Bearer {resend_key}"},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as r:
+                email_data = await r.json()
 
-        for photo in photos[:max_photos]:
-            ref = photo.get("photo_reference")
-            if ref:
-                url = (
-                    f"https://maps.googleapis.com/maps/api/place/photo"
-                    f"?maxwidth=800&photo_reference={ref}&key={GOOGLE_PLACES_API_KEY}"
-                )
-                photo_urls.append(url)
-    except Exception as e:
-        logger.error(f"Photo fetch error: {e}")
+        orig_from    = email_data.get("from", "")
+        orig_subject = email_data.get("subject", "")
+        orig_text    = (email_data.get("text", "") or "")[:500]
 
-    return photo_urls
+        # Extract reply-to address
+        reply_headers = email_data.get("headers", {})
+        reply_to = reply_headers.get("reply-to") or reply_headers.get("Reply-To") or orig_from
 
+        # Detect language from original text + subject
+        lang_hint = ""
+        if any(c in orig_text + orig_subject for c in "àáâãäåæçèéêëìíîïðñòóôõöùúûüý"):
+            lang_hint = "French"
+        elif any(c in orig_text + orig_subject for c in "äöüßÄÖÜ"):
+            lang_hint = "German"
+        elif any(c in orig_text + orig_subject for c in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"):
+            lang_hint = "Russian"
+        elif any(c in orig_text + orig_subject for c in "áéíóúüñ¡¿"):
+            lang_hint = "Spanish"
+        else:
+            lang_hint = "English"
 
-def search_google_places(query: str, location: str) -> list[dict]:
-    """Search Google Places API for venues."""
-    if not GOOGLE_PLACES_API_KEY:
-        return []
+        client_label = sender_name if sender_name else "our client"
+        sign = f"AI Assistant, booking on behalf of {client_label}" if sender_name else "AI Assistant, Pup Scout"
 
-    results = []
-    try:
-        url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-        params = {
-            "query": f"{query} in {location}",
-            "key": GOOGLE_PLACES_API_KEY,
-            "type": "establishment",
-        }
-        resp = requests.get(url, params=params, timeout=10)
-        data = resp.json()
+        # Generate thank-you via Anthropic
+        import anthropic as _anthropic
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+        if not anthropic_key:
+            return False, "No Anthropic key"
 
-        for place in data.get("results", [])[:5]:
-            place_id = place.get("place_id")
-            details = {}
+        ac = _anthropic.Anthropic(api_key=anthropic_key)
+        resp = ac.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": f"""Write a brief, warm thank-you email confirming a booking.
 
-            if place_id:
-                det_url = "https://maps.googleapis.com/maps/api/place/details/json"
-                det_params = {
-                    "place_id": place_id,
-                    "fields": "name,formatted_address,website,formatted_phone_number,rating,user_ratings_total,types,price_level",
-                    "key": GOOGLE_PLACES_API_KEY,
-                }
-                det_resp = requests.get(det_url, params=det_params, timeout=10)
-                details = det_resp.json().get("result", {})
+Context: The venue just confirmed our reservation request.
+Original venue email subject: {orig_subject}
+Language to use: {lang_hint}
+Sign off as: {sign}
 
-            # Price level: 0=free, 1=$, 2=$$, 3=$$$, 4=$$$$
-            price_level = details.get("price_level")
-            price_str = ""
-            if price_level is not None:
-                price_map = {0: "Free", 1: "Budget ($)", 2: "Moderate ($$)", 3: "Upscale ($$$)", 4: "Luxury ($$$$)"}
-                price_str = price_map.get(price_level, "")
+Write 2-3 sentences max. Confirm the booking, express gratitude, say we look forward to the visit.
+Return ONLY the email body, no subject line."""}]
+        )
+        body = resp.content[0].text.strip()
+        subject = f"Re: {orig_subject}" if orig_subject else "Booking confirmed — thank you!"
 
-            results.append({
-                "name": place.get("name", ""),
-                "place_id": place_id or "",
-                "address": details.get("formatted_address") or place.get("formatted_address", ""),
-                "rating": place.get("rating", ""),
-                "rating_count": details.get("user_ratings_total", ""),
-                "website": details.get("website", ""),
-                "phone": details.get("formatted_phone_number", ""),
-                "types": ", ".join(place.get("types", [])[:3]),
-                "price_level": price_str,
-            })
+        # Send via Resend
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json={
+                    "from": f"{sign} <outreach@pupscout.co.uk>",
+                    "to": [reply_to],
+                    "subject": subject,
+                    "text": body,
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as r:
+                result = await r.json()
+                if r.status in (200, 201) and result.get("id"):
+                    return True, ""
+                return False, result.get("message", "Send failed")
 
     except Exception as e:
-        logger.error(f"Google Places error: {e}")
+        logger.error(f"Confirmation email error: {e}")
+        return False, str(e)
 
-    return results
 
+async def _build_calendar_invite(email_id: str, tg_user) -> str | None:
+    """Build an .ics calendar file from the booking email context."""
+    resend_key = os.getenv("RESEND_FULL_KEY") or os.getenv("RESEND_API_KEY", "")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not resend_key or not anthropic_key:
+        return None
 
-def parse_request(user_request: str) -> dict:
-    """Parse user request with Claude."""
-    response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=400,
-        messages=[{
-            "role": "user",
-            "content": f"""Parse this event venue request. Return ONLY valid JSON, no markdown:
+    try:
+        import aiohttp, json as _json, re as _re, uuid as _uuid
+        from datetime import datetime, timezone, timedelta
 
-Request: "{user_request}"
+        # Fetch original email
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.resend.com/emails/receiving/{email_id}",
+                headers={"Authorization": f"Bearer {resend_key}"},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as r:
+                email_data = await r.json()
+
+        orig_from    = email_data.get("from", "")
+        orig_subject = email_data.get("subject", "")
+        orig_text    = (email_data.get("text", "") or "")[:1000]
+
+        # Also check Supabase for booking details
+        booking_details = {}
+        if supabase and tg_user:
+            try:
+                rows = sb_get("bookings", f"user_id=eq.{tg_user.id}&status=eq.pending&order=created_at.desc&limit=1")
+                if rows:
+                    booking_details = rows[0]
+            except Exception:
+                pass
+
+        # Extract venue name from email sender or booking
+        venue_name = booking_details.get("venue_name", "") or orig_from.split('<')[0].strip() or "Venue"
+        date_str   = booking_details.get("date", "")
+        time_str   = booking_details.get("time", "")
+        guests_str = booking_details.get("guests", "")
+        occasion   = booking_details.get("occasion", "")
+        venue_email = booking_details.get("venue_email", "")
+
+        # Use Claude to extract structured info from email
+        import anthropic as _anthropic
+        ac = _anthropic.Anthropic(api_key=anthropic_key)
+        resp = ac.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": f"""Extract booking details from this venue confirmation email. Return ONLY valid JSON:
+
+Email from: {orig_from}
+Subject: {orig_subject}
+Body: {orig_text}
+
+Known details: date={date_str}, time={time_str}, guests={guests_str}
 
 {{
-  "location": "city name",
-  "capacity": "number or range",
-  "budget": "budget info or unknown",
-  "vibe": "atmosphere/theme keywords",
-  "search_query": "2-4 word venue search query like: rooftop event space"
-}}"""
-        }]
-    )
+  "venue_name": "name of venue",
+  "date": "YYYY-MM-DD or best guess",
+  "time": "HH:MM in 24h or best guess",
+  "address": "full address if mentioned",
+  "booking_ref": "booking/reservation reference number if mentioned, else empty",
+  "duration_hours": 2,
+  "notes": "any special notes or instructions from the venue"
+}}
 
-    try:
-        text = response.content[0].text.strip()
-        text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
-        return json.loads(text)
-    except Exception as e:
-        logger.error(f"Parse error: {e}")
-        return {
-            "location": "unknown",
-            "capacity": "unknown",
-            "budget": "unknown",
-            "vibe": "event space",
-            "search_query": "event venue"
-        }
+If date/time unknown use today + 1 day at 19:00."""}]
+        )
+        txt = _re.sub(r'```(?:json)?\s*', '', resp.content[0].text.strip()).rstrip('`')
+        info = _json.loads(txt)
 
-
-def format_venue_card(venue: dict, analysis: dict) -> str:
-    """Format a single venue card."""
-    name = venue.get("name", "Unknown Venue")
-    address = venue.get("address", "")
-    rating = venue.get("rating", "")
-    rating_count = venue.get("rating_count", "")
-    website = venue.get("website", "")
-    price_level = venue.get("price_level", "")
-
-    why = analysis.get("why", "")
-    capacity_est = analysis.get("capacity_estimate", "")
-    vibe_match = analysis.get("vibe_match", "")
-    est_budget = analysis.get("estimated_budget", "")
-
-    lines = [f"🏛 *{name}*"]
-
-    if address:
-        lines.append(f"📍 _{address}_")
-
-    if rating:
-        stars = f"⭐ {rating}/5"
-        if rating_count:
-            stars += f" _({rating_count} reviews)_"
-        lines.append(stars)
-
-    if capacity_est:
-        lines.append(f"👥 Capacity: {capacity_est}")
-
-    if price_level or est_budget:
-        budget_line = "💰 "
-        if price_level:
-            budget_line += price_level
-        if est_budget:
-            budget_line += f" — est. {est_budget}"
-        lines.append(budget_line)
-
-    if vibe_match:
-        lines.append(f"✨ {vibe_match}")
-
-    if why:
-        lines.append(f"💡 {why}")
-
-    if website:
-        lines.append(f"🔗 {website}")
-
-    return "\n".join(lines)
-
-
-async def send_venue(update: Update, venue: dict, analysis: dict) -> None:
-    """Send a single venue card with photos."""
-    card_text = format_venue_card(venue, analysis)
-
-    # Try to get photos
-    photos = []
-    if venue.get("place_id"):
-        photos = get_place_photos(venue["place_id"], max_photos=3)
-
-    if photos:
+        # Build datetime
+        date_val = info.get("date", date_str) or (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        time_val = info.get("time", time_str) or "19:00"
         try:
-            if len(photos) == 1:
-                await update.message.reply_photo(
-                    photo=photos[0],
-                    caption=card_text,
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            else:
-                # Send as media group
-                media = []
-                for i, url in enumerate(photos):
-                    if i == 0:
-                        media.append(InputMediaPhoto(media=url, caption=card_text, parse_mode=ParseMode.MARKDOWN))
+            dt_start = datetime.strptime(f"{date_val} {time_val[:5]}", "%Y-%m-%d %H:%M")
+        except Exception:
+            dt_start = datetime.now() + timedelta(days=1, hours=19)
+        dt_end = dt_start + timedelta(hours=info.get("duration_hours", 2))
+
+        # Format for ICS (UTC — note: ideally convert from local but we don't have TZ)
+        fmt = "%Y%m%dT%H%M%S"
+        dtstart = dt_start.strftime(fmt)
+        dtend   = dt_end.strftime(fmt)
+        dtstamp = datetime.now(timezone.utc).strftime(fmt) + "Z"
+        uid = str(_uuid.uuid4())
+
+        vname = info.get("venue_name", venue_name)
+        address = info.get("address", "")
+        booking_ref = info.get("booking_ref", "")
+
+        # Try to get full address + timezone from Google Places
+        tz_id = "Europe/London"  # fallback
+        if not address and vname:
+            try:
+                gkey = os.getenv("GOOGLE_MAPS_API_KEY", "")
+                if gkey:
+                    # Build specific query using venue_email domain as hint for city
+                    venue_domain = (venue_email or "").split("@")[-1] if venue_email else ""
+                    search_q = vname
+                    # Add city hint from booking details if available
+                    if booking_details.get("venue_email", ""):
+                        pass  # use venue name as-is, rely on place_id if available
+                    # Use findplace with location bias if we have place_id
+                    place_id = booking_details.get("place_id", "")
+                    if place_id:
+                        async with aiohttp.ClientSession() as gs:
+                            async with gs.get(
+                                "https://maps.googleapis.com/maps/api/place/details/json",
+                                params={"place_id": place_id, "fields": "formatted_address,geometry", "key": gkey},
+                                timeout=aiohttp.ClientTimeout(total=5),
+                            ) as gr:
+                                gdata = await gr.json()
+                                result = gdata.get("result", {})
+                                address = result.get("formatted_address", "")
+                                loc = result.get("geometry", {}).get("location", {})
                     else:
-                        media.append(InputMediaPhoto(media=url))
-                await update.message.reply_media_group(media=media)
-            return
-        except Exception as e:
-            logger.warning(f"Photo send failed: {e}, sending text only")
+                        # Search with venue email domain as city hint
+                        async with aiohttp.ClientSession() as gs:
+                            async with gs.get(
+                                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                                params={"input": search_q, "inputtype": "textquery",
+                                        "fields": "formatted_address,geometry,place_id", "key": gkey},
+                                timeout=aiohttp.ClientTimeout(total=5),
+                            ) as gr:
+                                gdata = await gr.json()
+                                candidates = gdata.get("candidates", [])
+                                if candidates:
+                                    address = candidates[0].get("formatted_address", "")
+                                    loc = candidates[0].get("geometry", {}).get("location", {})
 
-    # Fallback: text only
-    await update.message.reply_text(card_text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+                    # Get timezone from coordinates
+                    if loc and loc.get("lat"):
+                        import time as _time
+                        async with aiohttp.ClientSession() as gs:
+                            async with gs.get(
+                                "https://maps.googleapis.com/maps/api/timezone/json",
+                                params={"location": f"{loc['lat']},{loc['lng']}",
+                                        "timestamp": int(_time.time()), "key": gkey},
+                                timeout=aiohttp.ClientTimeout(total=5),
+                            ) as gr:
+                                tzdata = await gr.json()
+                                tz_id = tzdata.get("timeZoneId", "Europe/London")
+            except Exception as e:
+                logger.warning(f"Places lookup error: {e}")
 
+        notes_parts = []
+        if guests_str:   notes_parts.append(f"Guests: {guests_str}")
+        if booking_ref:  notes_parts.append(f"Booking ref: {booking_ref}")
+        if venue_email:  notes_parts.append(f"Contact: {venue_email}")
+        extra = info.get("notes", "")
+        if extra:        notes_parts.append(extra)
+        description = "\\n".join(notes_parts) or "Booking via Pup Scout"
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_message = update.message.text
-    user_name = update.effective_user.first_name or "there"
+        title = f"Dinner @ {vname}"
+        if occasion and occasion not in ("event", "other", "dinner", ""):
+            title = f"{occasion.title()} @ {vname}"
 
-    thinking_msg = await update.message.reply_text(
-        f"🐾 On it, {user_name}! Sniffing out venues..."
-    )
-
-    try:
-        # Parse request
-        parsed = parse_request(user_message)
-        location = parsed.get("location", "unknown")
-        search_query = parsed.get("search_query", "event venue")
-
-        # Search Google Places
-        places = search_google_places(search_query, location)
-
-        if not places:
-            await thinking_msg.edit_text(
-                "🐾 Couldn't find venues via Google Places. Try being more specific about the city!"
-            )
-            return
-
-        # Ask Claude to analyze and rank venues
-        places_context = "\n\n".join([
-            f"Venue {i+1}: {p['name']} | {p['address']} | Rating: {p.get('rating','')} | Types: {p['types']}"
-            for i, p in enumerate(places)
+        ics = "\r\n".join([
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Pup Scout//Booking//EN",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+            "BEGIN:VEVENT",
+            f"UID:{uid}@pupscout.co.uk",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART;TZID={tz_id}:{dtstart}",
+            f"DTEND;TZID={tz_id}:{dtend}",
+            f"SUMMARY:{title}",
+            f"DESCRIPTION:{description}",
+            f"LOCATION:{address}",
+            "STATUS:CONFIRMED",
+            "BEGIN:VALARM",
+            "TRIGGER:-PT60M",
+            "ACTION:DISPLAY",
+            "DESCRIPTION:Booking reminder",
+            "END:VALARM",
+            "END:VEVENT",
+            "END:VCALENDAR",
         ])
-
-        analysis_response = anthropic_client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=1500,
-            messages=[{
-                "role": "user",
-                "content": f"""You are Pup Event Scout. Analyze these venues for the user's request.
-
-User request: "{user_message}"
-Location: {location}, Capacity needed: {parsed.get('capacity')}, Budget: {parsed.get('budget')}, Vibe: {parsed.get('vibe')}
-
-Venues found:
-{places_context}
-
-Return ONLY valid JSON array with analysis for top 3-4 venues (by index, 0-based):
-[
-  {{
-    "index": 0,
-    "why": "one sentence why it fits",
-    "capacity_estimate": "e.g. 30-100 people",
-    "vibe_match": "e.g. Rooftop / upscale / great views",
-    "estimated_budget": "e.g. $3,000-6,000 for full buyout"
-  }}
-]
-
-Be specific with budget estimates based on venue type and location. Only include venues that genuinely fit the request."""
-            }]
-        )
-
-        try:
-            analysis_text = analysis_response.content[0].text.strip()
-            analysis_text = re.sub(r"```(?:json)?\s*", "", analysis_text).strip().rstrip("`")
-            analyses = json.loads(analysis_text)
-        except Exception as e:
-            logger.error(f"Analysis parse error: {e}")
-            analyses = [{"index": i, "why": "", "capacity_estimate": "", "vibe_match": "", "estimated_budget": ""} for i in range(min(3, len(places)))]
-
-        # Delete thinking message
-        await thinking_msg.delete()
-
-        # Send intro
-        await update.message.reply_text(
-            f"🐾 Found *{len(analyses)} venues* in *{location}* for you:",
-            parse_mode=ParseMode.MARKDOWN
-        )
-
-        # Send each venue as separate message
-        for analysis in analyses:
-            idx = analysis.get("index", 0)
-            if idx < len(places):
-                await send_venue(update, places[idx], analysis)
+        return ics
 
     except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
-        await thinking_msg.edit_text(
-            "🐾 Hit a snag! Try again with city, capacity and vibe details."
-        )
+        logger.error(f"Calendar invite error: {e}")
+        return None
 
+
+def _update_booking_by_email_id(email_id: str, status: str):
+    """Update booking status by fetching venue email from Resend then matching in DB."""
+    if not supabase:
+        return
+    try:
+        import requests as _req
+        resend_key = os.getenv("RESEND_FULL_KEY") or os.getenv("RESEND_API_KEY", "")
+        if not resend_key:
+            return
+
+        # Get the inbound email to find which venue sent it
+        r = _req.get(
+            f"https://api.resend.com/emails/receiving/{email_id}",
+            headers={"Authorization": f"Bearer {resend_key}"},
+            timeout=8,
+        )
+        email_data = r.json()
+        from_addr = email_data.get("from", "")
+
+        # Extract email from "Name <email>" format
+        import re as _re
+        match = _re.search(r'<([^>]+)>', from_addr)
+        venue_email = match.group(1).lower() if match else from_addr.lower().strip()
+
+        # Find matching pending booking by venue_email
+        rows = supabase.table("bookings")\
+            .select("id")\
+            .ilike("venue_email", venue_email)\
+            .eq("status", "pending")\
+            .order("created_at", desc=True)\
+            .limit(1)\
+            .execute()
+
+        if rows.data:
+            booking_id = rows.data[0]["id"]
+            supabase.table("bookings").update({
+                "status": status,
+                "updated_at": __import__("datetime").datetime.utcnow().isoformat(),
+            }).eq("id", booking_id).execute()
+            logger.info(f"Booking {booking_id} → {status} (venue: {venue_email})")
+        else:
+            # Fallback: update most recent pending booking for this user
+            logger.warning(f"No booking found for venue_email={venue_email}, checking all pending")
+
+    except Exception as e:
+        logger.error(f"Update booking error: {e}")
+
+
+def sb_get(table: str, filters_str: str = "") -> list:
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{table}?{filters_str}&order=created_at.desc&limit=20",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+            },
+            timeout=8,
+        )
+        return resp.json() if isinstance(resp.json(), list) else []
+    except Exception as e:
+        logger.error(f"Supabase error: {e}")
+        return []
+
+
+def get_user_by_tg(tg_id: int) -> dict | None:
+    rows = sb_get("users", f"id=eq.{tg_id}")
+    return rows[0] if rows else None
+
+
+def main_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📍 Saved Venues", callback_data="menu_saved"),
+         InlineKeyboardButton("📅 Bookings", callback_data="menu_bookings")],
+        [InlineKeyboardButton("📩 Recent Emails", callback_data="menu_emails"),
+         InlineKeyboardButton("⚡ Subscription", callback_data="menu_subscription")],
+        [InlineKeyboardButton("🌐 Open Pup Scout", url="https://pupscout.co.uk")],
+    ])
+
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(WELCOME_MESSAGE, parse_mode=ParseMode.MARKDOWN)
+    user = update.effective_user
+    welcome = (
+        f"🐾 *Hey {user.first_name}!*\n\n"
+        f"I'm your personal booking assistant.\n\n"
+        f"I'll handle:\n"
+        f"• 📩 Email communication with venues\n"
+        f"• 📍 Your saved places\n"
+        f"• 📅 Booking reminders\n"
+        f"• ⚡ Your subscription\n\n"
+        f"Use the menu below or open the web app to search for venues."
+    )
+    await update.message.reply_text(welcome, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_keyboard())
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.MARKDOWN)
+    help_text = (
+        "🐾 *Pup Scout Bot*\n\n"
+        "*Commands:*\n"
+        "/start — Main menu\n"
+        "/saved — Your saved venues\n"
+        "/bookings — Confirmed bookings\n"
+        "/subscription — Manage subscription\n\n"
+        "*Web app:* https://pupscout.co.uk\n\n"
+        "Venue replies are forwarded here automatically 📩"
+    )
+    await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_keyboard())
 
+
+def _esc(text: str) -> str:
+    """Escape special chars for Telegram MarkdownV2."""
+    for ch in r'_*[]()~`>#+=|{}.!-':
+        text = text.replace(ch, f'\\{ch}')
+    return text
+
+
+async def saved_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    venues = sb_get("saved_venues", f"user_id=eq.{tg_id}")
+    if not venues:
+        await update.message.reply_text(
+            "📍 No saved venues yet.\n\nSearch on pupscout.co.uk and save your favourites.",
+        )
+        return
+    lines = ["📍 Your saved venues:\n"]
+    for i, v in enumerate(venues[:10], 1):
+        name    = v.get("name", "Unknown")
+        addr    = v.get("address", "")
+        website = v.get("website", "")
+        line = f"{i}. {name}"
+        if addr:    line += f"\n    {addr}"
+        if website: line += f"\n    🔗 {website}"
+        lines.append(line)
+    await update.message.reply_text(
+        "\n\n".join(lines),
+        disable_web_page_preview=True,
+    )
+
+
+def _is_past(date_str: str) -> bool:
+    """Check if a booking date is in the past."""
+    if not date_str:
+        return False
+    from datetime import datetime, timezone, date as dt_date
+    try:
+        # Try ISO date
+        d = datetime.strptime(date_str.strip()[:10], "%Y-%m-%d").date()
+        return d < dt_date.today()
+    except Exception:
+        return False
+
+
+def _format_booking(b: dict) -> str:
+    parts = [f"• {b.get('venue_name', '?')}"]
+    detail = []
+    if b.get("date"): detail.append(f"📅 {b['date']}")
+    if b.get("time"): detail.append(b["time"])
+    if b.get("guests"): detail.append(f"👥 {b['guests']}")
+    if detail: parts.append("  " + "  ".join(detail))
+    return "\n".join(parts)
+
+
+async def bookings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    msg = update.message or update.callback_query.message
+
+    try:
+        all_bookings = sb_get("bookings", f"user_id=eq.{tg_id}")
+    except Exception:
+        all_bookings = []
+
+    if not all_bookings:
+        await msg.reply_text(
+            "📅 No bookings yet.\n\nWhen you email a venue and they respond, I'll track it here.",
+        )
+        return
+
+    confirmed_upcoming = [b for b in all_bookings if b.get("status") == "confirmed" and not _is_past(b.get("date",""))]
+    pending            = [b for b in all_bookings if b.get("status") == "pending"]
+    lines = []
+
+    if confirmed_upcoming:
+        lines.append("✅ Confirmed — upcoming\n")
+        lines.extend(_format_booking(b) for b in confirmed_upcoming[:5])
+
+    if pending:
+        if lines: lines.append("")
+        lines.append("⏳ Awaiting reply\n")
+        lines.extend(_format_booking(b) for b in pending[:5])
+
+    if not lines:
+        lines.append("📅 No upcoming bookings.\n\nUse /history to see past bookings.")
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📖 Past bookings", callback_data="menu_history"),
+    ]])
+    await msg.reply_text("\n".join(lines), reply_markup=keyboard)
+
+
+async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    msg = update.message or (update.callback_query.message if update.callback_query else None)
+
+    try:
+        all_bookings = sb_get("bookings", f"user_id=eq.{tg_id}")
+    except Exception:
+        all_bookings = []
+
+    past_confirmed = [b for b in all_bookings if b.get("status") == "confirmed" and _is_past(b.get("date",""))]
+    past_declined  = [b for b in all_bookings if b.get("status") == "declined"]
+
+    if not past_confirmed and not past_declined:
+        await msg.reply_text("📖 No past bookings yet.")
+        return
+
+    lines = []
+    if past_confirmed:
+        lines.append("🎉 Past — completed\n")
+        lines.extend(_format_booking(b) for b in past_confirmed[:10])
+
+    if past_declined:
+        if lines: lines.append("")
+        lines.append("❌ Past — declined\n")
+        lines.extend(_format_booking(b) for b in past_declined[:10])
+
+    await msg.reply_text("\n".join(lines))
+
+
+async def subscription_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = get_user_by_tg(tg_id)
+
+    if not user:
+        await update.message.reply_text(
+            "⚡ *Sign in first*\n\nVisit [pupscout.co.uk](https://pupscout.co.uk) and sign in with Telegram to manage your subscription.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    tier = user.get("tier", "free")
+    expires = user.get("subscription_expires_at", "")
+
+    if tier == "premium" and expires:
+        from datetime import datetime, timezone
+        try:
+            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            days_left = (exp_dt - datetime.now(timezone.utc)).days
+            status_line = f"⚡ *Premium* — {days_left} days remaining"
+        except Exception:
+            status_line = "⚡ *Premium*"
+    else:
+        status_line = "🆓 *Free plan* — 3 results per search"
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌐 Upgrade on web", url="https://pupscout.co.uk")],
+    ])
+
+    await update.message.reply_text(
+        f"⚡ *Subscription*\n\n{status_line}\n\n"
+        f"*Premium includes:*\n"
+        f"• Up to 10 results per search\n"
+        f"• Full email outreach history\n"
+        f"• Priority venue matching\n\n"
+        f"Upgrade for 5 TON/month on the web app.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=keyboard,
+    )
+
+
+# ─── Callback handler ─────────────────────────────────────────────────────────
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    # ── Booking action callbacks (sent by email inbound handler) ──
+    if data.startswith("book_confirm:"):
+        email_id = data.split(":", 1)[1]
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("✅ Booking confirmed! Sending thank-you to the venue…")
+        _update_booking_by_email_id(email_id, "confirmed")
+        # Send confirmation email back to venue
+        ok, err = await _send_confirmation_email(email_id, update.effective_user)
+        if ok:
+            await query.message.reply_text("📧 Thank-you email sent to the venue.")
+        else:
+            await query.message.reply_text(f"✅ Confirmed! (Email send failed: {err})")
+
+        # Send calendar invite
+        ics = await _build_calendar_invite(email_id, update.effective_user)
+        if ics:
+            from io import BytesIO
+            await query.message.reply_document(
+                document=BytesIO(ics.encode()),
+                filename="booking.ics",
+                caption="📅 Add to your calendar",
+            )
+
+    elif data.startswith("book_decline:"):
+        email_id = data.split(":", 1)[1]
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("❌ Booking declined.")
+        _update_booking_by_email_id(email_id, "declined")
+
+    elif data.startswith("book_reply:"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("💬 What would you like to tell the venue? Just send me a message.")
+
+    elif data.startswith("book_alt_time:"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("🕐 What alternative date or time would you like to suggest?")
+
+    elif data == "find_venue":
+        await query.message.reply_text(
+            "🔍 Open Pup Scout to find another venue:\nhttps://pupscout.co.uk",
+            disable_web_page_preview=True,
+        )
+
+    # ── Menu callbacks ──
+    elif data == "menu_saved":
+        tg_id = update.effective_user.id
+        venues = sb_get("saved_venues", f"user_id=eq.{tg_id}")
+        if not venues:
+            text = "📍 No saved venues yet.\n\nSearch on pupscout.co.uk and save your favourites."
+        else:
+            lines = ["📍 Your saved venues:\n"]
+            for i, v in enumerate(venues[:10], 1):
+                line = f"{i}. {v.get('name','?')}"
+                if v.get("address"): line += f"\n    {v['address']}"
+                if v.get("website"): line += f"\n    🔗 {v['website']}"
+                lines.append(line)
+            text = "\n\n".join(lines)
+        await query.message.reply_text(text, disable_web_page_preview=True)
+
+    elif data == "menu_bookings":
+        await bookings_command(update, context)
+
+    elif data == "menu_history":
+        await history_command(update, context)
+
+    elif data == "menu_emails":
+        await query.message.reply_text(
+            "📩 *Recent venue emails*\n\n"
+            "Replies from venues are forwarded here automatically.\n"
+            "Your full email history is on [pupscout.co.uk](https://pupscout.co.uk).",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif data == "menu_subscription":
+        await subscription_command(update, context)
+
+
+# ─── Unknown messages ─────────────────────────────────────────────────────────
+
+async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "🐾 Use the menu or open [pupscout.co.uk](https://pupscout.co.uk) to search for venues.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+# ─── Setup ────────────────────────────────────────────────────────────────────
 
 async def post_init(app) -> None:
     from telegram import BotCommand
     await app.bot.set_my_commands([
-        BotCommand("start", "Welcome message"),
-        BotCommand("help", "How to use Pup Event Scout"),
+        BotCommand("start",        "Main menu"),
+        BotCommand("saved",        "Your saved venues"),
+        BotCommand("bookings",     "Upcoming bookings"),
+        BotCommand("history",      "Past bookings"),
+        BotCommand("subscription", "Manage subscription"),
+        BotCommand("help",         "Help"),
     ])
 
 
 def main() -> None:
     if not TELEGRAM_TOKEN:
         raise ValueError("TELEGRAM_TOKEN not set!")
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY not set!")
 
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("🐾 Pup Event Scout bot starting...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.add_handler(CommandHandler("start",        start_command))
+    app.add_handler(CommandHandler("help",         help_command))
+    app.add_handler(CommandHandler("saved",        saved_command))
+    app.add_handler(CommandHandler("bookings",     bookings_command))
+    app.add_handler(CommandHandler("history",      history_command))
+    app.add_handler(CommandHandler("subscription", subscription_command))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
+
+    logger.info("🐾 Pup Scout bot starting...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
