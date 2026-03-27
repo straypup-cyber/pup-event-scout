@@ -426,7 +426,7 @@ def parse_request(user_request: str, mode: str = "venue") -> dict:
         "experiences": "experiences, activities, escape rooms, virtual reality, go-karts, axe throwing, cooking classes, arcades, adventure activities",
     }
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-haiku-4-5",
         max_tokens=400,
         messages=[{"role": "user", "content": f"""Parse this {mode} search request. Return ONLY valid JSON, no markdown:
 
@@ -455,7 +455,7 @@ def analyze_venues(places: list[dict], parsed: dict, user_request: str, max_resu
         for i, p in enumerate(places)
     ])
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-haiku-4-5",
         max_tokens=1500,
         messages=[{"role": "user", "content": f"""Analyze venues for: "{user_request}"
 Capacity: {parsed.get('capacity')}, Budget: {parsed.get('budget')}, Vibe: {parsed.get('vibe')}
@@ -989,7 +989,7 @@ def email_inbound():
     if text_body and ANTHROPIC_API_KEY:
         try:
             resp = anthropic_client.messages.create(
-                model="claude-sonnet-4-5",
+                model="claude-haiku-4-5",
                 max_tokens=400,
                 messages=[{"role": "user", "content": f"""Analyze this venue reply email and return ONLY valid JSON:
 

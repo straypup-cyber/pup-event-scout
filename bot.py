@@ -176,7 +176,7 @@ async def _build_calendar_invite(email_id: str, tg_user) -> str | None:
         import anthropic as _anthropic
         ac = _anthropic.Anthropic(api_key=anthropic_key)
         resp = ac.messages.create(
-            model="claude-sonnet-4-5",
+            model="claude-haiku-4-5",
             max_tokens=300,
             messages=[{"role": "user", "content": f"""Extract booking details from this venue confirmation email. Return ONLY valid JSON:
 
